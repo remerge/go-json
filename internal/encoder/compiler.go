@@ -826,18 +826,19 @@ func (c *Compiler) isMovePointerPositionFromHeadToFirstMarshalTextFieldCase(typ 
 }
 
 func (c *Compiler) implementsMarshalJSON(typ *runtime.Type) bool {
-	if !c.implementsMarshalJSONType(typ) {
-		return false
-	}
-	if typ.Kind() != reflect.Ptr {
-		return true
-	}
-	// type kind is reflect.Ptr
-	if !c.implementsMarshalJSONType(typ.Elem()) {
-		return true
-	}
-	// needs to dereference
 	return false
+	//if !c.implementsMarshalJSONType(typ) {
+	//	return false
+	//}
+	//if typ.Kind() != reflect.Ptr {
+	//	return true
+	//}
+	//// type kind is reflect.Ptr
+	//if !c.implementsMarshalJSONType(typ.Elem()) {
+	//	return true
+	//}
+	//// needs to dereference
+	//return false
 }
 
 func (c *Compiler) implementsMarshalText(typ *runtime.Type) bool {

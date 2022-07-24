@@ -1317,6 +1317,12 @@ var unmarshalTests = []unmarshalTest{
 		ptr: new(string),
 		out: "hello\ufffd\ufffd\ufffd\ufffd\ufffd\ufffdworld",
 	},
+	{in: "-128", ptr: new(int8), out: int8(-128)},
+	{in: "127", ptr: new(int8), out: int8(127)},
+	{in: "-32768", ptr: new(int16), out: int16(-32768)},
+	{in: "32767", ptr: new(int16), out: int16(32767)},
+	{in: "-2147483648", ptr: new(int32), out: int32(-2147483648)},
+	{in: "2147483647", ptr: new(int32), out: int32(2147483647)},
 }
 
 type All struct {
@@ -3774,5 +3780,208 @@ func TestIssue282(t *testing.T) {
 	}
 	if v["h"].F0 != "1" {
 		t.Fatalf("failed to assign map value")
+	}
+}
+
+func TestDecodeStructFieldMap(t *testing.T) {
+	type Foo struct {
+		Bar map[float64]float64 `json:"bar,omitempty"`
+	}
+	var v Foo
+	if err := json.Unmarshal([]byte(`{"name":"test"}`), &v); err != nil {
+		t.Fatal(err)
+	}
+	if v.Bar != nil {
+		t.Fatalf("failed to decode v.Bar = %+v", v.Bar)
+	}
+}
+
+type issue303 struct {
+	Count int
+	Type  string
+	Value interface{}
+}
+
+func (t *issue303) UnmarshalJSON(b []byte) error {
+	type tmpType issue303
+
+	wrapped := struct {
+		Value json.RawMessage
+		tmpType
+	}{}
+	if err := json.Unmarshal(b, &wrapped); err != nil {
+		return err
+	}
+	*t = issue303(wrapped.tmpType)
+
+	switch wrapped.Type {
+	case "string":
+		var str string
+		if err := json.Unmarshal(wrapped.Value, &str); err != nil {
+			return err
+		}
+		t.Value = str
+	}
+	return nil
+}
+
+func TestIssue303(t *testing.T) {
+	var v issue303
+	if err := json.Unmarshal([]byte(`{"Count":7,"Type":"string","Value":"hello"}`), &v); err != nil {
+		t.Fatal(err)
+	}
+	if v.Count != 7 || v.Type != "string" || v.Value != "hello" {
+		t.Fatalf("failed to decode. count = %d type = %s value = %v", v.Count, v.Type, v.Value)
+	}
+}
+
+func TestIssue327(t *testing.T) {
+	var v struct {
+		Date time.Time `json:"date"`
+	}
+	dec := json.NewDecoder(strings.NewReader(`{"date": "2021-11-23T13:47:30+01:00"})`))
+	if err := dec.DecodeContext(context.Background(), &v); err != nil {
+		t.Fatal(err)
+	}
+	expected := "2021-11-23T13:47:30+01:00"
+	if got := v.Date.Format(time.RFC3339); got != expected {
+		t.Fatalf("failed to decode. expected %q but got %q", expected, got)
+	}
+}
+
+func TestIssue337(t *testing.T) {
+	in := strings.Repeat(" ", 510) + "{}"
+	var m map[string]string
+	if err := json.NewDecoder(strings.NewReader(in)).Decode(&m); err != nil {
+		t.Fatal("unexpected error:", err)
+	}
+	if len(m) != 0 {
+		t.Fatal("unexpected result", m)
+	}
+}
+
+func Benchmark306(b *testing.B) {
+	type T0 struct {
+		Str string
+	}
+	in := []byte(`{"Str":"` + strings.Repeat(`abcd\"`, 10000) + `"}`)
+	b.Run("stdjson", func(b *testing.B) {
+		var x T0
+		for i := 0; i < b.N; i++ {
+			stdjson.Unmarshal(in, &x)
+		}
+	})
+	b.Run("go-json", func(b *testing.B) {
+		var x T0
+		for i := 0; i < b.N; i++ {
+			json.Unmarshal(in, &x)
+		}
+	})
+}
+
+func TestIssue348(t *testing.T) {
+	in := strings.Repeat("["+strings.Repeat(",1000", 500)[1:]+"]", 2)
+	dec := json.NewDecoder(strings.NewReader(in))
+	for dec.More() {
+		var foo interface{}
+		if err := dec.Decode(&foo); err != nil {
+			t.Error(err)
+		}
+	}
+}
+
+type issue342 string
+
+func (t *issue342) UnmarshalJSON(b []byte) error {
+	panic("unreachable")
+}
+
+func TestIssue342(t *testing.T) {
+	var v map[issue342]int
+	in := []byte(`{"a":1}`)
+	if err := json.Unmarshal(in, &v); err != nil {
+		t.Errorf("unexpected error: %v", err)
+	}
+	expected := 1
+	if got := v["a"]; got != expected {
+		t.Errorf("unexpected result: got(%v) != expected(%v)", got, expected)
+	}
+}
+
+func TestIssue360(t *testing.T) {
+	var uints []uint8
+	err := json.Unmarshal([]byte(`[0, 1, 2]`), &uints)
+	if err != nil {
+		t.Errorf("unexpected error: %v", err)
+	}
+	if len(uints) != 3 || !(uints[0] == 0 && uints[1] == 1 && uints[2] == 2) {
+		t.Errorf("unexpected result: %v", uints)
+	}
+}
+
+func TestIssue359(t *testing.T) {
+	var a interface{} = 1
+	var b interface{} = &a
+	var c interface{} = &b
+	v, err := json.Marshal(c)
+	if err != nil {
+		t.Errorf("unexpected error: %v", err)
+	}
+	if string(v) != "1" {
+		t.Errorf("unexpected result: %v", string(v))
+	}
+}
+
+func TestIssue364(t *testing.T) {
+	var v struct {
+		Description string `json:"description"`
+	}
+	err := json.Unmarshal([]byte(`{"description":"\uD83D\uDE87 Toledo is a metro station"}`), &v)
+	if err != nil {
+		t.Errorf("unexpected error: %v", err)
+	}
+	if v.Description != "🚇 Toledo is a metro station" {
+		t.Errorf("unexpected result: %v", v.Description)
+	}
+}
+
+func TestIssue362(t *testing.T) {
+	type AliasedPrimitive int
+	type Combiner struct {
+		SomeField int
+		AliasedPrimitive
+	}
+	originalCombiner := Combiner{AliasedPrimitive: 7}
+	b, err := json.Marshal(originalCombiner)
+	assertErr(t, err)
+	newCombiner := Combiner{}
+	err = json.Unmarshal(b, &newCombiner)
+	assertErr(t, err)
+	assertEq(t, "TestEmbeddedPrimitiveAlias", originalCombiner, newCombiner)
+}
+
+func TestIssue335(t *testing.T) {
+	var v []string
+	in := []byte(`["\u","A"]`)
+	err := json.Unmarshal(in, &v)
+	if err == nil {
+		t.Errorf("unexpected success")
+	}
+}
+
+func TestIssue372(t *testing.T) {
+	type A int
+	type T struct {
+		_ int
+		*A
+	}
+	var v T
+	err := json.Unmarshal([]byte(`{"A":7}`), &v)
+	assertErr(t, err)
+
+	got := *v.A
+	expected := A(7)
+	if got != expected {
+		t.Errorf("unexpected result: %v != %v", got, expected)
 	}
 }

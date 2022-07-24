@@ -7,11 +7,14 @@ import (
 	stdjson "encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"log"
 	"math"
+	"math/big"
 	"reflect"
 	"regexp"
 	"strconv"
+	"strings"
 	"testing"
 	"time"
 
@@ -477,7 +480,8 @@ func TestDebugMode(t *testing.T) {
 			t.Fatal("expected error")
 		}
 	}()
-	json.MarshalWithOption(mustErrTypeForDebug{}, json.Debug())
+	var buf bytes.Buffer
+	json.MarshalWithOption(mustErrTypeForDebug{}, json.Debug(), json.DebugWith(&buf))
 }
 
 func TestIssue116(t *testing.T) {
@@ -550,20 +554,28 @@ func Test_MarshalIndent(t *testing.T) {
 	prefix := "-"
 	indent := "\t"
 	t.Run("struct", func(t *testing.T) {
-		bytes, err := json.MarshalIndent(struct {
-			A int    `json:"a"`
-			B uint   `json:"b"`
-			C string `json:"c"`
-			D int    `json:"-"`  // ignore field
-			a int    `json:"aa"` // private field
+		v := struct {
+			A int         `json:"a"`
+			B uint        `json:"b"`
+			C string      `json:"c"`
+			D interface{} `json:"d"`
+			X int         `json:"-"`  // ignore field
+			a int         `json:"aa"` // private field
 		}{
 			A: -1,
 			B: 1,
 			C: "hello world",
-		}, prefix, indent)
+			D: struct {
+				E bool `json:"e"`
+			}{
+				E: true,
+			},
+		}
+		expected, err := stdjson.MarshalIndent(v, prefix, indent)
 		assertErr(t, err)
-		result := "{\n-\t\"a\": -1,\n-\t\"b\": 1,\n-\t\"c\": \"hello world\"\n-}"
-		assertEq(t, "struct", result, string(bytes))
+		got, err := json.MarshalIndent(v, prefix, indent)
+		assertErr(t, err)
+		assertEq(t, "struct", string(expected), string(got))
 	})
 	t.Run("slice", func(t *testing.T) {
 		t.Run("[]int", func(t *testing.T) {
@@ -2166,5 +2178,416 @@ func TestIssue290(t *testing.T) {
 	}
 	if !bytes.Equal(expected, got) {
 		t.Fatalf("failed to encode non empty interface. expected = %q but got %q", expected, got)
+	}
+}
+
+func TestIssue299(t *testing.T) {
+	t.Run("conflict second field", func(t *testing.T) {
+		type Embedded struct {
+			ID   string            `json:"id"`
+			Name map[string]string `json:"name"`
+		}
+		type Container struct {
+			Embedded
+			Name string `json:"name"`
+		}
+		c := &Container{
+			Embedded: Embedded{
+				ID:   "1",
+				Name: map[string]string{"en": "Hello", "es": "Hola"},
+			},
+			Name: "Hi",
+		}
+		expected, _ := stdjson.Marshal(c)
+		got, err := json.Marshal(c)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !bytes.Equal(expected, got) {
+			t.Fatalf("expected %q but got %q", expected, got)
+		}
+	})
+	t.Run("conflict map field", func(t *testing.T) {
+		type Embedded struct {
+			Name map[string]string `json:"name"`
+		}
+		type Container struct {
+			Embedded
+			Name string `json:"name"`
+		}
+		c := &Container{
+			Embedded: Embedded{
+				Name: map[string]string{"en": "Hello", "es": "Hola"},
+			},
+			Name: "Hi",
+		}
+		expected, _ := stdjson.Marshal(c)
+		got, err := json.Marshal(c)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !bytes.Equal(expected, got) {
+			t.Fatalf("expected %q but got %q", expected, got)
+		}
+	})
+	t.Run("conflict slice field", func(t *testing.T) {
+		type Embedded struct {
+			Name []string `json:"name"`
+		}
+		type Container struct {
+			Embedded
+			Name string `json:"name"`
+		}
+		c := &Container{
+			Embedded: Embedded{
+				Name: []string{"Hello"},
+			},
+			Name: "Hi",
+		}
+		expected, _ := stdjson.Marshal(c)
+		got, err := json.Marshal(c)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !bytes.Equal(expected, got) {
+			t.Fatalf("expected %q but got %q", expected, got)
+		}
+	})
+}
+
+func TestRecursivePtrHead(t *testing.T) {
+	type User struct {
+		Account  *string `json:"account"`
+		Password *string `json:"password"`
+		Nickname *string `json:"nickname"`
+		Address  *string `json:"address,omitempty"`
+		Friends  []*User `json:"friends,omitempty"`
+	}
+	user1Account, user1Password, user1Nickname := "abcdef", "123456", "user1"
+	user1 := &User{
+		Account:  &user1Account,
+		Password: &user1Password,
+		Nickname: &user1Nickname,
+		Address:  nil,
+	}
+	user2Account, user2Password, user2Nickname := "ghijkl", "123456", "user2"
+	user2 := &User{
+		Account:  &user2Account,
+		Password: &user2Password,
+		Nickname: &user2Nickname,
+		Address:  nil,
+	}
+	user1.Friends = []*User{user2}
+	expected, err := stdjson.Marshal(user1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := json.Marshal(user1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(expected, got) {
+		t.Fatalf("failed to encode. expected %q but got %q", expected, got)
+	}
+}
+
+func TestMarshalIndent(t *testing.T) {
+	v := map[string]map[string]interface{}{
+		"a": {
+			"b": "1",
+			"c": map[string]interface{}{
+				"d": "1",
+			},
+		},
+	}
+	expected, err := stdjson.MarshalIndent(v, "", "    ")
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := json.MarshalIndent(v, "", "    ")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(expected, got) {
+		t.Fatalf("expected: %q but got %q", expected, got)
+	}
+}
+
+type issue318Embedded struct {
+	_ [64]byte
+}
+
+type issue318 struct {
+	issue318Embedded `json:"-"`
+	ID               issue318MarshalText `json:"id,omitempty"`
+}
+
+type issue318MarshalText struct {
+	ID string
+}
+
+func (i issue318MarshalText) MarshalText() ([]byte, error) {
+	return []byte(i.ID), nil
+}
+
+func TestIssue318(t *testing.T) {
+	v := issue318{
+		ID: issue318MarshalText{ID: "1"},
+	}
+	b, err := json.Marshal(v)
+	if err != nil {
+		t.Fatal(err)
+	}
+	expected := `{"id":"1"}`
+	if string(b) != expected {
+		t.Fatalf("failed to encode. expected %s but got %s", expected, string(b))
+	}
+}
+
+type emptyStringMarshaler struct {
+	Value stringMarshaler `json:"value,omitempty"`
+}
+
+type stringMarshaler string
+
+func (s stringMarshaler) MarshalJSON() ([]byte, error) {
+	return []byte(`"` + s + `"`), nil
+}
+
+func TestEmptyStringMarshaler(t *testing.T) {
+	value := emptyStringMarshaler{}
+	expected, err := stdjson.Marshal(value)
+	assertErr(t, err)
+	got, err := json.Marshal(value)
+	assertErr(t, err)
+	assertEq(t, "struct", string(expected), string(got))
+}
+
+func TestIssue324(t *testing.T) {
+	type T struct {
+		FieldA *string  `json:"fieldA,omitempty"`
+		FieldB *string  `json:"fieldB,omitempty"`
+		FieldC *bool    `json:"fieldC"`
+		FieldD []string `json:"fieldD,omitempty"`
+	}
+	v := &struct {
+		Code string `json:"code"`
+		*T
+	}{
+		T: &T{},
+	}
+	var sv = "Test Field"
+	v.Code = "Test"
+	v.T.FieldB = &sv
+	expected, err := stdjson.Marshal(v)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := json.Marshal(v)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(expected, got) {
+		t.Fatalf("failed to encode. expected %q but got %q", expected, got)
+	}
+}
+
+func TestIssue339(t *testing.T) {
+	type T1 struct {
+		*big.Int
+	}
+	type T2 struct {
+		T1 T1 `json:"T1"`
+	}
+	v := T2{T1{Int: big.NewInt(10000)}}
+	b, err := json.Marshal(&v)
+	assertErr(t, err)
+	got := string(b)
+	expected := `{"T1":10000}`
+	if got != expected {
+		t.Errorf("unexpected result: %v != %v", got, expected)
+	}
+}
+
+func TestIssue376(t *testing.T) {
+	type Container struct {
+		V interface{} `json:"value"`
+	}
+	type MapOnly struct {
+		Map map[string]int64 `json:"map"`
+	}
+	b, err := json.Marshal(Container{MapOnly{}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := string(b)
+	expected := `{"value":{"map":null}}`
+	if got != expected {
+		t.Errorf("unexpected result: %v != %v", got, expected)
+	}
+}
+
+type Issue370 struct {
+	String string
+	Valid  bool
+}
+
+func (i *Issue370) MarshalJSON() ([]byte, error) {
+	if !i.Valid {
+		return json.Marshal(nil)
+	}
+	return json.Marshal(i.String)
+}
+
+func TestIssue370(t *testing.T) {
+	v := []struct {
+		V Issue370
+	}{
+		{V: Issue370{String: "test", Valid: true}},
+	}
+	b, err := json.Marshal(v)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := string(b)
+	expected := `[{"V":"test"}]`
+	if got != expected {
+		t.Errorf("unexpected result: %v != %v", got, expected)
+	}
+}
+
+func TestIssue374(t *testing.T) {
+	r := io.MultiReader(strings.NewReader(strings.Repeat(" ", 505)+`"\u`), strings.NewReader(`0000"`))
+	var v interface{}
+	if err := json.NewDecoder(r).Decode(&v); err != nil {
+		t.Fatal(err)
+	}
+	got := v.(string)
+	expected := "\u0000"
+	if got != expected {
+		t.Errorf("unexpected result: %q != %q", got, expected)
+	}
+}
+
+func TestIssue381(t *testing.T) {
+	var v struct {
+		Field0  bool
+		Field1  bool
+		Field2  bool
+		Field3  bool
+		Field4  bool
+		Field5  bool
+		Field6  bool
+		Field7  bool
+		Field8  bool
+		Field9  bool
+		Field10 bool
+		Field11 bool
+		Field12 bool
+		Field13 bool
+		Field14 bool
+		Field15 bool
+		Field16 bool
+		Field17 bool
+		Field18 bool
+		Field19 bool
+		Field20 bool
+		Field21 bool
+		Field22 bool
+		Field23 bool
+		Field24 bool
+		Field25 bool
+		Field26 bool
+		Field27 bool
+		Field28 bool
+		Field29 bool
+		Field30 bool
+		Field31 bool
+		Field32 bool
+		Field33 bool
+		Field34 bool
+		Field35 bool
+		Field36 bool
+		Field37 bool
+		Field38 bool
+		Field39 bool
+		Field40 bool
+		Field41 bool
+		Field42 bool
+		Field43 bool
+		Field44 bool
+		Field45 bool
+		Field46 bool
+		Field47 bool
+		Field48 bool
+		Field49 bool
+		Field50 bool
+		Field51 bool
+		Field52 bool
+		Field53 bool
+		Field54 bool
+		Field55 bool
+		Field56 bool
+		Field57 bool
+		Field58 bool
+		Field59 bool
+		Field60 bool
+		Field61 bool
+		Field62 bool
+		Field63 bool
+		Field64 bool
+		Field65 bool
+		Field66 bool
+		Field67 bool
+		Field68 bool
+		Field69 bool
+		Field70 bool
+		Field71 bool
+		Field72 bool
+		Field73 bool
+		Field74 bool
+		Field75 bool
+		Field76 bool
+		Field77 bool
+		Field78 bool
+		Field79 bool
+		Field80 bool
+		Field81 bool
+		Field82 bool
+		Field83 bool
+		Field84 bool
+		Field85 bool
+		Field86 bool
+		Field87 bool
+		Field88 bool
+		Field89 bool
+		Field90 bool
+		Field91 bool
+		Field92 bool
+		Field93 bool
+		Field94 bool
+		Field95 bool
+		Field96 bool
+		Field97 bool
+		Field98 bool
+		Field99 bool
+	}
+
+	// test encoder cache issue, not related to encoder
+	b, err := json.Marshal(v)
+	if err != nil {
+		t.Errorf("failed to marshal %s", err.Error())
+		t.FailNow()
+	}
+
+	std, err := stdjson.Marshal(v)
+	if err != nil {
+		t.Errorf("failed to marshal with encoding/json %s", err.Error())
+		t.FailNow()
+	}
+
+	if !bytes.Equal(std, b) {
+		t.Errorf("encoding result not equal to encoding/json")
+		t.FailNow()
 	}
 }

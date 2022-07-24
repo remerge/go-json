@@ -482,6 +482,6 @@ func filterFieldSets(sets []*structFieldSet) []*structFieldSet {
 	return filtered
 }
 
-func implementsUnmarshalJSONType(typ *runtime.Type) bool {
-	return typ.Implements(unmarshalJSONType) || typ.Implements(unmarshalJSONContextType)
-}
+//func implementsUnmarshalJSONType(typ *runtime.Type) bool {
+//	return typ.Implements(unmarshalJSONType) || typ.Implements(unmarshalJSONContextType)
+//}

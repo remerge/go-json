@@ -8,21 +8,21 @@ import (
 	"github.com/goccy/go-json"
 )
 
-type coverSliceMarshalJSON struct {
-	A int
-}
-
-func (coverSliceMarshalJSON) MarshalJSON() ([]byte, error) {
-	return []byte(`"hello"`), nil
-}
-
-type coverSliceMarshalText struct {
-	A int
-}
-
-func (coverSliceMarshalText) MarshalText() ([]byte, error) {
-	return []byte(`"hello"`), nil
-}
+//type coverSliceMarshalJSON struct {
+//	A int
+//}
+//
+//func (coverSliceMarshalJSON) MarshalJSON() ([]byte, error) {
+//	return []byte(`"hello"`), nil
+//}
+//
+//type coverSliceMarshalText struct {
+//	A int
+//}
+//
+//func (coverSliceMarshalText) MarshalText() ([]byte, error) {
+//	return []byte(`"hello"`), nil
+//}
 
 type recursiveSlice struct {
 	A int
@@ -148,14 +148,14 @@ func TestCoverSlice(t *testing.T) {
 			name: "SliceStruct",
 			data: []struct{ A int }{struct{ A int }{A: 1}, struct{ A int }{A: 2}},
 		},
-		{
-			name: "SliceMarshalJSON",
-			data: []coverSliceMarshalJSON{{A: 1}, {A: 2}},
-		},
-		{
-			name: "SliceMarshalText",
-			data: []coverSliceMarshalText{{A: 1}, {A: 2}},
-		},
+		//{
+		//	name: "SliceMarshalJSON",
+		//	data: []coverSliceMarshalJSON{{A: 1}, {A: 2}},
+		//},
+		//{
+		//	name: "SliceMarshalText",
+		//	data: []coverSliceMarshalText{{A: 1}, {A: 2}},
+		//},
 		{
 			name: "SliceIntPtr",
 			data: []*int{intptr(1), intptr(2), nil, intptr(3)},

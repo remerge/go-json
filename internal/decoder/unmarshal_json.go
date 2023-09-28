@@ -102,3 +102,78 @@ func (d *unmarshalJSONDecoder) Decode(ctx *RuntimeContext, cursor, depth int64, 
 func (d *unmarshalJSONDecoder) DecodePath(ctx *RuntimeContext, cursor, depth int64) ([][]byte, int64, error) {
 	return nil, 0, fmt.Errorf("json: unmarshal json decoder does not support decode path")
 }
+
+type remergeUnmarshalJSONDecoder struct {
+	typ        *runtime.Type
+	structName string
+	fieldName  string
+}
+
+func newRemergeUnmarshalJSONDecoder(typ *runtime.Type, structName, fieldName string) *remergeUnmarshalJSONDecoder {
+	return &remergeUnmarshalJSONDecoder{
+		typ:        typ,
+		structName: structName,
+		fieldName:  fieldName,
+	}
+}
+
+func (d *remergeUnmarshalJSONDecoder) annotateError(cursor int64, err error) {
+	switch e := err.(type) {
+	case *errors.UnmarshalTypeError:
+		e.Struct = d.structName
+		e.Field = d.fieldName
+	case *errors.SyntaxError:
+		e.Offset = cursor
+	}
+}
+
+func (d *remergeUnmarshalJSONDecoder) DecodeStream(s *Stream, depth int64, p unsafe.Pointer) error {
+	s.skipWhiteSpace()
+	start := s.cursor
+	if err := s.skipValue(depth); err != nil {
+		return err
+	}
+	src := s.buf[start:s.cursor]
+	dst := make([]byte, len(src))
+	copy(dst, src)
+
+	v := *(*interface{})(unsafe.Pointer(&emptyInterface{
+		typ: d.typ,
+		ptr: p,
+	}))
+	switch v := v.(type) {
+	case remergeUnmarshaler:
+		if err := v.RemergeUnmarshalJSON(dst); err != nil {
+			d.annotateError(s.cursor, err)
+			return err
+		}
+	}
+	return nil
+}
+
+func (d *remergeUnmarshalJSONDecoder) Decode(ctx *RuntimeContext, cursor, depth int64, p unsafe.Pointer) (int64, error) {
+	buf := ctx.Buf
+	cursor = skipWhiteSpace(buf, cursor)
+	start := cursor
+	end, err := skipValue(buf, cursor, depth)
+	if err != nil {
+		return 0, err
+	}
+	src := buf[start:end]
+	dst := make([]byte, len(src))
+	copy(dst, src)
+
+	v := *(*interface{})(unsafe.Pointer(&emptyInterface{
+		typ: d.typ,
+		ptr: p,
+	}))
+	if err := v.(remergeUnmarshaler).RemergeUnmarshalJSON(dst); err != nil {
+		d.annotateError(cursor, err)
+		return 0, err
+	}
+	return end, nil
+}
+
+func (d *remergeUnmarshalJSONDecoder) DecodePath(ctx *RuntimeContext, cursor, depth int64) ([][]byte, int64, error) {
+	return nil, 0, fmt.Errorf("json: remerge unmarshal json decoder does not support decode path")
+}

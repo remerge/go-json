@@ -23,8 +23,13 @@ type unmarshalerContext interface {
 	UnmarshalJSON(context.Context, []byte) error
 }
 
+type remergeUnmarshaler interface {
+	RemergeUnmarshalJSON([]byte) error
+}
+
 var (
 	unmarshalJSONType        = reflect.TypeOf((*json.Unmarshaler)(nil)).Elem()
 	unmarshalJSONContextType = reflect.TypeOf((*unmarshalerContext)(nil)).Elem()
+	remergeUnmarshalJSONType = reflect.TypeOf((*remergeUnmarshaler)(nil)).Elem()
 	unmarshalTextType        = reflect.TypeOf((*encoding.TextUnmarshaler)(nil)).Elem()
 )

@@ -98,14 +98,13 @@ func (d *unmarshalJSONDecoder) Decode(ctx *RuntimeContext, cursor, depth int64, 
 	return end, nil
 }
 
-
 type remergeUnmarshalJSONDecoder struct {
 	typ        *runtime.Type
 	structName string
 	fieldName  string
 }
 
-func newremergeUnmarshalJSONDecoder(typ *runtime.Type, structName, fieldName string) *remergeUnmarshalJSONDecoder {
+func newRemergeUnmarshalJSONDecoder(typ *runtime.Type, structName, fieldName string) *remergeUnmarshalJSONDecoder {
 	return &remergeUnmarshalJSONDecoder{
 		typ:        typ,
 		structName: structName,
@@ -138,18 +137,18 @@ func (d *remergeUnmarshalJSONDecoder) DecodeStream(s *Stream, depth int64, p uns
 		ptr: p,
 	}))
 	switch v := v.(type) {
-	case unmarshalerContext:
-		var ctx context.Context
-		if (s.Option.Flags & ContextOption) != 0 {
-			ctx = s.Option.Context
-		} else {
-			ctx = context.Background()
-		}
-		if err := v.RemergeUnmarshalJSON(ctx, dst); err != nil {
-			d.annotateError(s.cursor, err)
-			return err
-		}
-	case json.Unmarshaler:
+	// case unmarshalerContext:
+	// 	var ctx context.Context
+	// 	if (s.Option.Flags & ContextOption) != 0 {
+	// 		ctx = s.Option.Context
+	// 	} else {
+	// 		ctx = context.Background()
+	// 	}
+	// 	if err := v.RemergeUnmarshalJSON(ctx, dst); err != nil {
+	// 		d.annotateError(s.cursor, err)
+	// 		return err
+	// 	}
+	case remergeUnmarshaler:
 		if err := v.RemergeUnmarshalJSON(dst); err != nil {
 			d.annotateError(s.cursor, err)
 			return err
@@ -180,7 +179,7 @@ func (d *remergeUnmarshalJSONDecoder) Decode(ctx *RuntimeContext, cursor, depth 
 			return 0, err
 		}
 	} else {
-		if err := v.(json.Unmarshaler).RemergeUnmarshalJSON(dst); err != nil {
+		if err := v.(remergeUnmarshaler).RemergeUnmarshalJSON(dst); err != nil {
 			d.annotateError(cursor, err)
 			return 0, err
 		}

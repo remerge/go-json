@@ -12,10 +12,13 @@ linters-settings:
 linters:
   enable-all: true
   disable:
+    - contextcheck
+    - depguard
     - dogsled
     - dupl
     - exhaustive
     - exhaustivestruct
+    - exhaustruct
     - errorlint
     - forbidigo
     - funlen
@@ -46,6 +49,7 @@ linters:
     - nakedret
     - nestif
     - nlreturn
+    - nosnakecase
     - testpackage
     - wsl
     - varnamelen

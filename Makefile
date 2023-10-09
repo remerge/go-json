@@ -30,7 +30,7 @@ golangci-lint: | $(BIN_DIR)
 		GOLANGCI_LINT_TMP_DIR=$$(mktemp -d); \
 		cd $$GOLANGCI_LINT_TMP_DIR; \
 		go mod init tmp; \
-		GOBIN=$(BIN_DIR) go get github.com/golangci/golangci-lint/cmd/golangci-lint@v1.36.0; \
+		GOBIN=$(BIN_DIR) go get github.com/golangci/golangci-lint/cmd/golangci-lint@v1.54.2; \
 		rm -rf $$GOLANGCI_LINT_TMP_DIR; \
 	}
 

@@ -142,6 +142,7 @@ func (d *unmarshalTextDecoder) Decode(ctx *RuntimeContext, cursor, depth int64, 
 	return end, nil
 }
 
+//nolint:nonamedreturns
 func unquoteBytes(s []byte) (t []byte, ok bool) {
 	length := len(s)
 	if length < 2 || s[0] != '"' || s[length-1] != '"' {

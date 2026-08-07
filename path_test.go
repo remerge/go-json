@@ -2,6 +2,7 @@ package json_test
 
 import (
 	"bytes"
+	"math"
 	"reflect"
 	"sort"
 	"testing"
@@ -205,11 +206,24 @@ func TestUnmarshalPath(t *testing.T) {
 				t.Fatal(err)
 			}
 			v := int64(7)
-			if err := path.Unmarshal([]byte(`{"value":9007199254740993}`), &v); err == nil {
-				t.Fatal("expected error")
+			if err := path.Unmarshal([]byte(`{"value":9007199254740993}`), &v); err != nil {
+				t.Fatal(err)
 			}
-			if v != 7 {
-				t.Fatalf("destination mutated: got %d, want %d", v, 7)
+			if v != 9007199254740993 {
+				t.Fatalf("destination mutated: got %d, want %d", v, int64(9007199254740993))
+			}
+		})
+		t.Run("accepts exact power of two into int64", func(t *testing.T) {
+			path, err := json.CreatePath("$.value")
+			if err != nil {
+				t.Fatal(err)
+			}
+			var v int64
+			if err := path.Unmarshal([]byte(`{"value":1152921504606846976}`), &v); err != nil {
+				t.Fatal(err)
+			}
+			if v != 1<<60 {
+				t.Fatalf("decoded value = %d, want %d", v, int64(1<<60))
 			}
 		})
 	})
@@ -310,6 +324,36 @@ func TestGetPath(t *testing.T) {
 			}
 			if v != 7 {
 				t.Fatalf("destination mutated: got %d, want %d", v, 7)
+			}
+		})
+		t.Run("accepts exact float64 integers", func(t *testing.T) {
+			src := map[string]interface{}{"value": float64(1 << 53)}
+			var v int64
+			if err := path.Get(src, &v); err != nil {
+				t.Fatal(err)
+			}
+			if v != 1<<53 {
+				t.Fatalf("decoded value = %d, want %d", v, int64(1<<53))
+			}
+		})
+		t.Run("accepts exact float64 power of two", func(t *testing.T) {
+			src := map[string]interface{}{"value": float64(1 << 60)}
+			var v int64
+			if err := path.Get(src, &v); err != nil {
+				t.Fatal(err)
+			}
+			if v != 1<<60 {
+				t.Fatalf("decoded value = %d, want %d", v, int64(1<<60))
+			}
+		})
+		t.Run("accepts exact float32 boundary", func(t *testing.T) {
+			src := map[string]interface{}{"value": float32(1 << 24)}
+			var v int64
+			if err := path.Get(src, &v); err != nil {
+				t.Fatal(err)
+			}
+			if v != 1<<24 {
+				t.Fatalf("decoded value = %d, want %d", v, int64(1<<24))
 			}
 		})
 	})
@@ -428,15 +472,17 @@ func TestGetPath(t *testing.T) {
 			t.Fatal("expected error")
 		}
 	})
-	t.Run("rejects imprecise float-backed integers", func(t *testing.T) {
+	t.Run("rejects non-finite floats", func(t *testing.T) {
 		path, err := json.CreatePath("$.value")
 		if err != nil {
 			t.Fatal(err)
 		}
 
-		var v int64
-		if err := path.Get(map[string]interface{}{"value": float64(1<<53 + 1)}, &v); err == nil {
-			t.Fatal("expected error")
+		for _, value := range []float64{math.NaN(), math.Inf(1), math.Inf(-1)} {
+			var v int64
+			if err := path.Get(map[string]interface{}{"value": value}, &v); err == nil {
+				t.Fatal("expected error")
+			}
 		}
 	})
 }

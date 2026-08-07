@@ -64,6 +64,9 @@ func (p *Path) Unmarshal(data []byte, v interface{}, optFuncs ...DecodeOptionFun
 	if err != nil {
 		return err
 	}
+	if handled, err := unmarshalPathExactIntegers(contents, reflect.ValueOf(v)); handled {
+		return err
+	}
 	results := make([]interface{}, 0, len(contents))
 	for _, content := range contents {
 		var result interface{}
@@ -76,6 +79,65 @@ func (p *Path) Unmarshal(data []byte, v interface{}, optFuncs ...DecodeOptionFun
 		return err
 	}
 	return nil
+}
+
+func unmarshalPathExactIntegers(contents [][]byte, dst reflect.Value) (bool, error) {
+	if dst.Kind() != reflect.Ptr || dst.IsNil() {
+		return false, nil
+	}
+	t := dst.Elem().Type()
+	switch t.Kind() {
+	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64,
+		reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64, reflect.Uintptr:
+		if len(contents) == 0 {
+			return true, nil
+		}
+		ret := reflect.New(t)
+		if err := Unmarshal(contents[0], ret.Interface()); err != nil {
+			return true, err
+		}
+		dst.Elem().Set(ret.Elem())
+		return true, nil
+	case reflect.Slice:
+		if !isExactIntegerKind(t.Elem().Kind()) {
+			return false, nil
+		}
+		ret := reflect.MakeSlice(t, len(contents), len(contents))
+		for i, content := range contents {
+			if err := Unmarshal(content, ret.Index(i).Addr().Interface()); err != nil {
+				return true, err
+			}
+		}
+		dst.Elem().Set(ret)
+		return true, nil
+	case reflect.Array:
+		if !isExactIntegerKind(t.Elem().Kind()) {
+			return false, nil
+		}
+		if len(contents) != t.Len() {
+			return true, decoder.AssignValue(reflect.ValueOf(make([]interface{}, len(contents))), dst)
+		}
+		ret := reflect.New(t).Elem()
+		for i, content := range contents {
+			if err := Unmarshal(content, ret.Index(i).Addr().Interface()); err != nil {
+				return true, err
+			}
+		}
+		dst.Elem().Set(ret)
+		return true, nil
+	default:
+		return false, nil
+	}
+}
+
+func isExactIntegerKind(kind reflect.Kind) bool {
+	switch kind {
+	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64,
+		reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64, reflect.Uintptr:
+		return true
+	default:
+		return false
+	}
 }
 
 // Get extract and substitute the value of the part corresponding to JSON Path from the input value.

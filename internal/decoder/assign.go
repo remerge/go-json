@@ -11,11 +11,6 @@ var (
 	nilValue = reflect.ValueOf(nil)
 )
 
-const (
-	maxExactFloat32Integer = 1 << 24
-	maxExactFloat64Integer = 1 << 53
-)
-
 func AssignValue(src, dst reflect.Value) error {
 	if dst.Type().Kind() != reflect.Ptr {
 		return fmt.Errorf("invalid dst type. required pointer type: %T", dst.Type())
@@ -222,7 +217,7 @@ func exactInt64FromFloat(v reflect.Value) (int64, error) {
 	if math.Trunc(f64) != f64 {
 		return 0, fmt.Errorf("value %v is not an exact integer", f64)
 	}
-	if math.Abs(f64) >= maxExactIntegerFromFloat(v.Kind()) {
+	if !isExactIntegerFloat(v) {
 		return 0, fmt.Errorf("value %v is not an exact integer", f64)
 	}
 	return int64(f64), nil
@@ -236,17 +231,61 @@ func exactUint64FromFloat(v reflect.Value) (uint64, error) {
 	if math.Trunc(f64) != f64 {
 		return 0, fmt.Errorf("value %v is not an exact integer", f64)
 	}
-	if f64 >= maxExactIntegerFromFloat(v.Kind()) {
+	if !isExactIntegerFloat(v) {
 		return 0, fmt.Errorf("value %v is not an exact integer", f64)
 	}
 	return uint64(f64), nil
 }
 
-func maxExactIntegerFromFloat(kind reflect.Kind) float64 {
-	if kind == reflect.Float32 {
-		return maxExactFloat32Integer
+func isExactIntegerFloat(v reflect.Value) bool {
+	switch v.Kind() {
+	case reflect.Float32:
+		return isExactIntegerFloat32(float32(v.Float()))
+	case reflect.Float64:
+		return isExactIntegerFloat64(v.Float())
+	default:
+		return false
 	}
-	return maxExactFloat64Integer
+}
+
+func isExactIntegerFloat32(f float32) bool {
+	if f == 0 {
+		return true
+	}
+	bits := math.Float32bits(f)
+	exponentBits := int((bits >> 23) & 0xff)
+	if exponentBits == 0xff {
+		return false
+	}
+	exponent := exponentBits - 127
+	if exponent < 0 {
+		return false
+	}
+	if exponent >= 23 {
+		return true
+	}
+	mask := uint32(1<<(23-exponent)) - 1
+	return bits&mask == 0
+}
+
+func isExactIntegerFloat64(f float64) bool {
+	if f == 0 {
+		return true
+	}
+	bits := math.Float64bits(f)
+	exponentBits := int((bits >> 52) & 0x7ff)
+	if exponentBits == 0x7ff {
+		return false
+	}
+	exponent := exponentBits - 1023
+	if exponent < 0 {
+		return false
+	}
+	if exponent >= 52 {
+		return true
+	}
+	mask := uint64(1<<(52-exponent)) - 1
+	return bits&mask == 0
 }
 
 func castString(v reflect.Value) (reflect.Value, error) {

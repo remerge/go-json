@@ -63,7 +63,7 @@ func unmarshalNoCopy(src []byte, v interface{}, optFuncs ...DecodeOptionFunc) er
 	if err := validateType(header.typ, uintptr(header.ptr)); err != nil {
 		return err
 	}
-	dec, err := decoder.CompileToGetDecoder(header.typ)
+	dec, err := decoder.CompileToGetNoCopyDecoder(header.typ)
 	if err != nil {
 		return err
 	}
@@ -73,6 +73,7 @@ func unmarshalNoCopy(src []byte, v interface{}, optFuncs ...DecodeOptionFunc) er
 	for _, optFunc := range optFuncs {
 		optFunc(rctx.Option)
 	}
+	rctx.Option.Flags |= decoder.NoCopyOption
 	cursor, err := dec.Decode(rctx, 0, 0, header.ptr)
 	if err != nil {
 		decoder.ReleaseRuntimeContext(rctx)

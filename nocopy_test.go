@@ -1,6 +1,7 @@
 package json_test
 
 import (
+	"bytes"
 	stdjson "encoding/json"
 	"reflect"
 	"sync"
@@ -12,6 +13,10 @@ import (
 
 type noCopySliceContainer struct {
 	Values []int `json:"values"`
+}
+
+type noCopyStringContainer struct {
+	Value string `json:"value"`
 }
 
 type dualUnmarshaler struct {
@@ -117,6 +122,36 @@ func TestUnmarshalNoCopyMatchesUnmarshalForValidSlices(t *testing.T) {
 	}
 	if !reflect.DeepEqual(noCopy, ordinary) {
 		t.Fatalf("result mismatch: no-copy %#v, ordinary %#v", noCopy, ordinary)
+	}
+}
+
+func TestUnmarshalNoCopyAcceptsCallerOwnedSlicesWithoutSentinel(t *testing.T) {
+	input := []byte(`{"value":"he\nllo"}`)
+	wantInput := append([]byte(nil), input...)
+
+	var got noCopyStringContainer
+	if err := json.UnmarshalNoCopy(input, &got); err != nil {
+		t.Fatalf("UnmarshalNoCopy: %v", err)
+	}
+	if got.Value != "he\nllo" {
+		t.Fatalf("decoded value = %q, want %q", got.Value, "he\nllo")
+	}
+	if !bytes.Equal(input, wantInput) {
+		t.Fatalf("input mutated: got %q, want %q", input, wantInput)
+	}
+}
+
+func TestUnmarshalNoCopyPreservesAliasingForSentinelTerminatedSlices(t *testing.T) {
+	input := append([]byte(`{"value":"hello"}`), 0)
+
+	var got noCopyStringContainer
+	if err := json.UnmarshalNoCopy(input, &got); err != nil {
+		t.Fatalf("UnmarshalNoCopy: %v", err)
+	}
+
+	input[10] = 'j'
+	if got.Value != "jello" {
+		t.Fatalf("decoded value = %q, want %q", got.Value, "jello")
 	}
 }
 

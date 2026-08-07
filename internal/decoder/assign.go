@@ -2,6 +2,7 @@ package decoder
 
 import (
 	"fmt"
+	"math"
 	"reflect"
 	"strconv"
 )
@@ -25,63 +26,27 @@ func AssignValue(src, dst reflect.Value) error {
 func castValue(t reflect.Type, v reflect.Value) (reflect.Value, error) {
 	switch t.Kind() {
 	case reflect.Int:
-		vv, err := castInt(v)
-		if err != nil {
-			return nilValue, err
-		}
-		return reflect.ValueOf(int(vv.Int())), nil
+		return castSignedValue(t, v)
 	case reflect.Int8:
-		vv, err := castInt(v)
-		if err != nil {
-			return nilValue, err
-		}
-		return reflect.ValueOf(int8(vv.Int())), nil
+		return castSignedValue(t, v)
 	case reflect.Int16:
-		vv, err := castInt(v)
-		if err != nil {
-			return nilValue, err
-		}
-		return reflect.ValueOf(int16(vv.Int())), nil
+		return castSignedValue(t, v)
 	case reflect.Int32:
-		vv, err := castInt(v)
-		if err != nil {
-			return nilValue, err
-		}
-		return reflect.ValueOf(int32(vv.Int())), nil
+		return castSignedValue(t, v)
 	case reflect.Int64:
-		return castInt(v)
+		return castSignedValue(t, v)
 	case reflect.Uint:
-		vv, err := castUint(v)
-		if err != nil {
-			return nilValue, err
-		}
-		return reflect.ValueOf(uint(vv.Uint())), nil
+		return castUnsignedValue(t, v)
 	case reflect.Uint8:
-		vv, err := castUint(v)
-		if err != nil {
-			return nilValue, err
-		}
-		return reflect.ValueOf(uint8(vv.Uint())), nil
+		return castUnsignedValue(t, v)
 	case reflect.Uint16:
-		vv, err := castUint(v)
-		if err != nil {
-			return nilValue, err
-		}
-		return reflect.ValueOf(uint16(vv.Uint())), nil
+		return castUnsignedValue(t, v)
 	case reflect.Uint32:
-		vv, err := castUint(v)
-		if err != nil {
-			return nilValue, err
-		}
-		return reflect.ValueOf(uint32(vv.Uint())), nil
+		return castUnsignedValue(t, v)
 	case reflect.Uint64:
-		return castUint(v)
+		return castUnsignedValue(t, v)
 	case reflect.Uintptr:
-		vv, err := castUint(v)
-		if err != nil {
-			return nilValue, err
-		}
-		return reflect.ValueOf(uintptr(vv.Uint())), nil
+		return castUnsignedValue(t, v)
 	case reflect.String:
 		return castString(v)
 	case reflect.Bool:
@@ -106,12 +71,44 @@ func castValue(t reflect.Type, v reflect.Value) (reflect.Value, error) {
 	return v, nil
 }
 
+func castSignedValue(t reflect.Type, v reflect.Value) (reflect.Value, error) {
+	vv, err := castInt(v)
+	if err != nil {
+		return nilValue, err
+	}
+	ret := reflect.New(t).Elem()
+	i64 := vv.Int()
+	if ret.OverflowInt(i64) {
+		return nilValue, fmt.Errorf("value %d overflows %s", i64, t)
+	}
+	ret.SetInt(i64)
+	return ret, nil
+}
+
+func castUnsignedValue(t reflect.Type, v reflect.Value) (reflect.Value, error) {
+	vv, err := castUint(v)
+	if err != nil {
+		return nilValue, err
+	}
+	ret := reflect.New(t).Elem()
+	u64 := vv.Uint()
+	if ret.OverflowUint(u64) {
+		return nilValue, fmt.Errorf("value %d overflows %s", u64, t)
+	}
+	ret.SetUint(u64)
+	return ret, nil
+}
+
 func castInt(v reflect.Value) (reflect.Value, error) {
 	switch v.Type().Kind() {
 	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
 		return v, nil
 	case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64, reflect.Uintptr:
-		return reflect.ValueOf(int64(v.Uint())), nil
+		u64 := v.Uint()
+		if u64 > math.MaxInt64 {
+			return nilValue, fmt.Errorf("value %d overflows int64", u64)
+		}
+		return reflect.ValueOf(int64(u64)), nil
 	case reflect.String:
 		i64, err := strconv.ParseInt(v.String(), 10, 64)
 		if err != nil {
@@ -124,7 +121,11 @@ func castInt(v reflect.Value) (reflect.Value, error) {
 		}
 		return reflect.ValueOf(int64(0)), nil
 	case reflect.Float32, reflect.Float64:
-		return reflect.ValueOf(int64(v.Float())), nil
+		f64 := v.Float()
+		if math.IsNaN(f64) || math.IsInf(f64, 0) || f64 < math.MinInt64 || f64 > math.MaxInt64 {
+			return nilValue, fmt.Errorf("value %v overflows int64", f64)
+		}
+		return reflect.ValueOf(int64(f64)), nil
 	case reflect.Array:
 		if v.Len() > 0 {
 			return castInt(v.Index(0))
@@ -150,7 +151,11 @@ func castInt(v reflect.Value) (reflect.Value, error) {
 func castUint(v reflect.Value) (reflect.Value, error) {
 	switch v.Type().Kind() {
 	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
-		return reflect.ValueOf(uint64(v.Int())), nil
+		i64 := v.Int()
+		if i64 < 0 {
+			return nilValue, fmt.Errorf("value %d overflows uint64", i64)
+		}
+		return reflect.ValueOf(uint64(i64)), nil
 	case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64, reflect.Uintptr:
 		return v, nil
 	case reflect.String:
@@ -165,7 +170,11 @@ func castUint(v reflect.Value) (reflect.Value, error) {
 		}
 		return reflect.ValueOf(uint64(0)), nil
 	case reflect.Float32, reflect.Float64:
-		return reflect.ValueOf(uint64(v.Float())), nil
+		f64 := v.Float()
+		if math.IsNaN(f64) || math.IsInf(f64, 0) || f64 < 0 || f64 > float64(math.MaxUint64) {
+			return nilValue, fmt.Errorf("value %v overflows uint64", f64)
+		}
+		return reflect.ValueOf(uint64(f64)), nil
 	case reflect.Array:
 		if v.Len() > 0 {
 			return castUint(v.Index(0))

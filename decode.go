@@ -59,16 +59,13 @@ func unmarshalNoCopy(src []byte, v interface{}, optFuncs ...DecodeOptionFunc) er
 	if err := validateType(header.typ, uintptr(header.ptr)); err != nil {
 		return err
 	}
-
-	if err := validateType(header.typ, uintptr(header.ptr)); err != nil {
-		return err
-	}
 	dec, err := decoder.CompileToGetDecoder(header.typ)
 	if err != nil {
 		return err
 	}
+	buf := ensureDecodeSentinel(src)
 	rctx := decoder.TakeRuntimeContext()
-	rctx.Buf = src
+	rctx.Buf = buf
 	rctx.Option.Flags = 0
 	for _, optFunc := range optFuncs {
 		optFunc(rctx.Option)
@@ -80,7 +77,7 @@ func unmarshalNoCopy(src []byte, v interface{}, optFuncs ...DecodeOptionFunc) er
 		return err
 	}
 	decoder.ReleaseRuntimeContext(rctx)
-	return validateEndBuf(src, cursor)
+	return validateEndBuf(buf, cursor)
 }
 
 func unmarshalContext(ctx context.Context, data []byte, v interface{}, optFuncs ...DecodeOptionFunc) error {
@@ -187,6 +184,15 @@ func validateEndBuf(src []byte, cursor int64) error {
 			cursor+1,
 		)
 	}
+}
+
+func ensureDecodeSentinel(src []byte) []byte {
+	if len(src) != 0 && src[len(src)-1] == nul {
+		return src
+	}
+	buf := make([]byte, len(src)+1)
+	copy(buf, src)
+	return buf
 }
 
 //nolint:staticcheck

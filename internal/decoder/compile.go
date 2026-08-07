@@ -34,11 +34,12 @@ func CompileToGetDecoder(typ *runtime.Type) (Decoder, error) {
 }
 
 var (
-	jsonNumberType   = reflect.TypeOf(json.Number(""))
-	typeAddr         *runtime.TypeAddr
-	cachedDecoderMap unsafe.Pointer // map[uintptr]decoder
-	cachedDecoder    []atomic.Pointer[Decoder]
-	initOnce         sync.Once
+	jsonNumberType     = reflect.TypeOf(json.Number(""))
+	jsonRawMessageType = reflect.TypeOf(json.RawMessage(nil))
+	typeAddr           *runtime.TypeAddr
+	cachedDecoderMap   unsafe.Pointer // map[uintptr]decoder
+	cachedDecoder      []atomic.Pointer[Decoder]
+	initOnce           sync.Once
 )
 
 func initDecoder() {
@@ -103,6 +104,9 @@ func compile(typ *runtime.Type, structName, fieldName string, structTypeToDecode
 
 	if runtime.PtrTo(typ).Implements(remergeUnmarshalJSONType) {
 		return newRemergeUnmarshalJSONDecoder(runtime.PtrTo(typ), structName, fieldName), nil
+	}
+	if runtime.RType2Type(typ) == jsonRawMessageType {
+		return newUnmarshalJSONDecoder(runtime.PtrTo(typ), structName, fieldName), nil
 	}
 
 	switch typ.Kind() {

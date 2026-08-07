@@ -159,6 +159,34 @@ func TestUnmarshalPath(t *testing.T) {
 			t.Fatal("failed to unmarshal path")
 		}
 	})
+	t.Run("rejects out of range integers", func(t *testing.T) {
+		t.Run("negative into uint", func(t *testing.T) {
+			path, err := json.CreatePath("$.value")
+			if err != nil {
+				t.Fatal(err)
+			}
+			v := uint(7)
+			if err := path.Unmarshal([]byte(`{"value":-1}`), &v); err == nil {
+				t.Fatal("expected error")
+			}
+			if v != 7 {
+				t.Fatalf("destination mutated: got %d, want %d", v, 7)
+			}
+		})
+		t.Run("width overflow into int8", func(t *testing.T) {
+			path, err := json.CreatePath("$.value")
+			if err != nil {
+				t.Fatal(err)
+			}
+			v := int8(7)
+			if err := path.Unmarshal([]byte(`{"value":300}`), &v); err == nil {
+				t.Fatal("expected error")
+			}
+			if v != 7 {
+				t.Fatalf("destination mutated: got %d, want %d", v, 7)
+			}
+		})
+	})
 }
 
 func TestGetPath(t *testing.T) {
@@ -230,5 +258,33 @@ func TestGetPath(t *testing.T) {
 		if !reflect.DeepEqual(b, []int{1, 2, 3, 4}) {
 			t.Fatalf("failed to decode by json.Get")
 		}
+	})
+	t.Run("rejects out of range integers", func(t *testing.T) {
+		path, err := json.CreatePath("$.value")
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		t.Run("signed width overflow", func(t *testing.T) {
+			src := map[string]interface{}{"value": int64(2147483648)}
+			v := int32(7)
+			if err := path.Get(src, &v); err == nil {
+				t.Fatal("expected error")
+			}
+			if v != 7 {
+				t.Fatalf("destination mutated: got %d, want %d", v, 7)
+			}
+		})
+
+		t.Run("unsigned to signed overflow", func(t *testing.T) {
+			src := map[string]interface{}{"value": uint64(1 << 63)}
+			v := int64(7)
+			if err := path.Get(src, &v); err == nil {
+				t.Fatal("expected error")
+			}
+			if v != 7 {
+				t.Fatalf("destination mutated: got %d, want %d", v, 7)
+			}
+		})
 	})
 }

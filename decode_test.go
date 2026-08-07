@@ -2162,7 +2162,6 @@ func TestInterfaceSet(t *testing.T) {
 // JSON null values should be ignored for primitives and string values instead of resulting in an error.
 // Issue 2540
 func TestUnmarshalNulls(t *testing.T) {
-	skipUpstreamInterfaceConformance(t)
 	// Unmarshal docs:
 	// The JSON null value unmarshals into an interface, map, pointer, or slice
 	// by setting that Go value to nil. Because null is often used in JSON to mean
@@ -2981,7 +2980,6 @@ func TestDecodeSlice(t *testing.T) {
 }
 
 func TestDecodeMultipleUnmarshal(t *testing.T) {
-	skipUpstreamInterfaceConformance(t)
 	data := []byte(`[{"AA":{"X":[{"a": "A"},{"b": "B"}],"Y":"y","Z":"z"},"BB":"bb"},{"AA":{"X":[],"Y":"y","Z":"z"},"BB":"bb"}]`)
 	var a []json.RawMessage
 	if err := json.Unmarshal(data, &a); err != nil {
@@ -3047,7 +3045,6 @@ func TestDecodeMultipleUnmarshal(t *testing.T) {
 }
 
 func TestMultipleDecodeWithRawMessage(t *testing.T) {
-	skipUpstreamInterfaceConformance(t)
 	original := []byte(`{
 		"Body": {
 			"List": [
@@ -3139,8 +3136,8 @@ func (u *structUnmarshaler) UnmarshalJSON(b []byte) error {
 }
 
 func TestSliceElemUnmarshaler(t *testing.T) {
-	skipUpstreamInterfaceConformance(t)
 	t.Run("int", func(t *testing.T) {
+		skipUpstreamInterfaceConformance(t)
 		var v []intUnmarshaler
 		if err := json.Unmarshal([]byte(`[1,2,3,4,5]`), &v); err != nil {
 			t.Fatal(err)
@@ -3183,6 +3180,7 @@ func TestSliceElemUnmarshaler(t *testing.T) {
 		}
 	})
 	t.Run("array", func(t *testing.T) {
+		skipUpstreamInterfaceConformance(t)
 		var v []arrayUnmarshaler
 		if err := json.Unmarshal([]byte(`[1,2,3,4,5]`), &v); err != nil {
 			t.Fatal(err)
@@ -3204,6 +3202,7 @@ func TestSliceElemUnmarshaler(t *testing.T) {
 		}
 	})
 	t.Run("map", func(t *testing.T) {
+		skipUpstreamInterfaceConformance(t)
 		var v []mapUnmarshaler
 		if err := json.Unmarshal([]byte(`[{"a":1},{"b":2},{"c":3},{"d":4},{"e":5}]`), &v); err != nil {
 			t.Fatal(err)
@@ -3225,6 +3224,7 @@ func TestSliceElemUnmarshaler(t *testing.T) {
 		}
 	})
 	t.Run("struct", func(t *testing.T) {
+		skipUpstreamInterfaceConformance(t)
 		var v []structUnmarshaler
 		if err := json.Unmarshal([]byte(`[1,2,3,4,5]`), &v); err != nil {
 			t.Fatal(err)
@@ -3497,7 +3497,6 @@ func TestDecodeByteSliceNull(t *testing.T) {
 }
 
 func TestDecodeBackSlash(t *testing.T) {
-	skipUpstreamInterfaceConformance(t)
 	t.Run("unmarshal", func(t *testing.T) {
 		t.Run("string", func(t *testing.T) {
 			var v1 map[string]stdjson.RawMessage

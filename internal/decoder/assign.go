@@ -11,6 +11,11 @@ var (
 	nilValue = reflect.ValueOf(nil)
 )
 
+const (
+	maxExactFloat32Integer = 1 << 24
+	maxExactFloat64Integer = 1 << 53
+)
+
 func AssignValue(src, dst reflect.Value) error {
 	if dst.Type().Kind() != reflect.Ptr {
 		return fmt.Errorf("invalid dst type. required pointer type: %T", dst.Type())
@@ -121,11 +126,11 @@ func castInt(v reflect.Value) (reflect.Value, error) {
 		}
 		return reflect.ValueOf(int64(0)), nil
 	case reflect.Float32, reflect.Float64:
-		f64 := v.Float()
-		if math.IsNaN(f64) || math.IsInf(f64, 0) || f64 < math.MinInt64 || f64 > math.MaxInt64 {
-			return nilValue, fmt.Errorf("value %v overflows int64", f64)
+		i64, err := exactInt64FromFloat(v)
+		if err != nil {
+			return nilValue, err
 		}
-		return reflect.ValueOf(int64(f64)), nil
+		return reflect.ValueOf(i64), nil
 	case reflect.Array:
 		if v.Len() > 0 {
 			return castInt(v.Index(0))
@@ -137,12 +142,18 @@ func castInt(v reflect.Value) (reflect.Value, error) {
 		}
 		return nilValue, fmt.Errorf("failed to cast to int64 from empty slice")
 	case reflect.Interface:
+		if v.IsNil() {
+			return nilValue, fmt.Errorf("failed to cast to int64 from nil interface")
+		}
 		return castInt(reflect.ValueOf(v.Interface()))
 	case reflect.Map:
 		return nilValue, fmt.Errorf("failed to cast to int64 from map")
 	case reflect.Struct:
 		return nilValue, fmt.Errorf("failed to cast to int64 from struct")
 	case reflect.Ptr:
+		if v.IsNil() {
+			return nilValue, fmt.Errorf("failed to cast to int64 from nil pointer")
+		}
 		return castInt(v.Elem())
 	}
 	return nilValue, fmt.Errorf("failed to cast to int64 from %s", v.Type().Kind())
@@ -170,11 +181,11 @@ func castUint(v reflect.Value) (reflect.Value, error) {
 		}
 		return reflect.ValueOf(uint64(0)), nil
 	case reflect.Float32, reflect.Float64:
-		f64 := v.Float()
-		if math.IsNaN(f64) || math.IsInf(f64, 0) || f64 < 0 || f64 > float64(math.MaxUint64) {
-			return nilValue, fmt.Errorf("value %v overflows uint64", f64)
+		u64, err := exactUint64FromFloat(v)
+		if err != nil {
+			return nilValue, err
 		}
-		return reflect.ValueOf(uint64(f64)), nil
+		return reflect.ValueOf(u64), nil
 	case reflect.Array:
 		if v.Len() > 0 {
 			return castUint(v.Index(0))
@@ -186,15 +197,56 @@ func castUint(v reflect.Value) (reflect.Value, error) {
 		}
 		return nilValue, fmt.Errorf("failed to cast to uint64 from empty slice")
 	case reflect.Interface:
+		if v.IsNil() {
+			return nilValue, fmt.Errorf("failed to cast to uint64 from nil interface")
+		}
 		return castUint(reflect.ValueOf(v.Interface()))
 	case reflect.Map:
 		return nilValue, fmt.Errorf("failed to cast to uint64 from map")
 	case reflect.Struct:
 		return nilValue, fmt.Errorf("failed to cast to uint64 from struct")
 	case reflect.Ptr:
+		if v.IsNil() {
+			return nilValue, fmt.Errorf("failed to cast to uint64 from nil pointer")
+		}
 		return castUint(v.Elem())
 	}
 	return nilValue, fmt.Errorf("failed to cast to uint64 from %s", v.Type().Kind())
+}
+
+func exactInt64FromFloat(v reflect.Value) (int64, error) {
+	f64 := v.Float()
+	if math.IsNaN(f64) || math.IsInf(f64, 0) || f64 < math.MinInt64 || f64 > math.MaxInt64 {
+		return 0, fmt.Errorf("value %v overflows int64", f64)
+	}
+	if math.Trunc(f64) != f64 {
+		return 0, fmt.Errorf("value %v is not an exact integer", f64)
+	}
+	if math.Abs(f64) >= maxExactIntegerFromFloat(v.Kind()) {
+		return 0, fmt.Errorf("value %v is not an exact integer", f64)
+	}
+	return int64(f64), nil
+}
+
+func exactUint64FromFloat(v reflect.Value) (uint64, error) {
+	f64 := v.Float()
+	if math.IsNaN(f64) || math.IsInf(f64, 0) || f64 < 0 || f64 > float64(math.MaxUint64) {
+		return 0, fmt.Errorf("value %v overflows uint64", f64)
+	}
+	if math.Trunc(f64) != f64 {
+		return 0, fmt.Errorf("value %v is not an exact integer", f64)
+	}
+	if f64 >= maxExactIntegerFromFloat(v.Kind()) {
+		return 0, fmt.Errorf("value %v is not an exact integer", f64)
+	}
+	return uint64(f64), nil
+}
+
+func maxExactIntegerFromFloat(kind reflect.Kind) float64 {
+	if kind == reflect.Float32 {
+		return maxExactFloat32Integer
+	}
+	return maxExactFloat64Integer
 }
 
 func castString(v reflect.Value) (reflect.Value, error) {
@@ -223,12 +275,18 @@ func castString(v reflect.Value) (reflect.Value, error) {
 		}
 		return nilValue, fmt.Errorf("failed to cast to string from empty slice")
 	case reflect.Interface:
+		if v.IsNil() {
+			return nilValue, fmt.Errorf("failed to cast to string from nil interface")
+		}
 		return castString(reflect.ValueOf(v.Interface()))
 	case reflect.Map:
 		return nilValue, fmt.Errorf("failed to cast to string from map")
 	case reflect.Struct:
 		return nilValue, fmt.Errorf("failed to cast to string from struct")
 	case reflect.Ptr:
+		if v.IsNil() {
+			return nilValue, fmt.Errorf("failed to cast to string from nil pointer")
+		}
 		return castString(v.Elem())
 	}
 	return nilValue, fmt.Errorf("failed to cast to string from %s", v.Type().Kind())
@@ -279,12 +337,18 @@ func castBool(v reflect.Value) (reflect.Value, error) {
 		}
 		return nilValue, fmt.Errorf("failed to cast to string from empty slice")
 	case reflect.Interface:
+		if v.IsNil() {
+			return nilValue, fmt.Errorf("failed to cast to bool from nil interface")
+		}
 		return castBool(reflect.ValueOf(v.Interface()))
 	case reflect.Map:
 		return nilValue, fmt.Errorf("failed to cast to string from map")
 	case reflect.Struct:
 		return nilValue, fmt.Errorf("failed to cast to string from struct")
 	case reflect.Ptr:
+		if v.IsNil() {
+			return nilValue, fmt.Errorf("failed to cast to bool from nil pointer")
+		}
 		return castBool(v.Elem())
 	}
 	return nilValue, fmt.Errorf("failed to cast to bool from %s", v.Type().Kind())
@@ -320,12 +384,18 @@ func castFloat(v reflect.Value) (reflect.Value, error) {
 		}
 		return nilValue, fmt.Errorf("failed to cast to float64 from empty slice")
 	case reflect.Interface:
+		if v.IsNil() {
+			return nilValue, fmt.Errorf("failed to cast to float64 from nil interface")
+		}
 		return castFloat(reflect.ValueOf(v.Interface()))
 	case reflect.Map:
 		return nilValue, fmt.Errorf("failed to cast to float64 from map")
 	case reflect.Struct:
 		return nilValue, fmt.Errorf("failed to cast to float64 from struct")
 	case reflect.Ptr:
+		if v.IsNil() {
+			return nilValue, fmt.Errorf("failed to cast to float64 from nil pointer")
+		}
 		return castFloat(v.Elem())
 	}
 	return nilValue, fmt.Errorf("failed to cast to float64 from %s", v.Type().Kind())
@@ -334,6 +404,9 @@ func castFloat(v reflect.Value) (reflect.Value, error) {
 func castArray(t reflect.Type, v reflect.Value) (reflect.Value, error) {
 	kind := v.Type().Kind()
 	if kind == reflect.Interface {
+		if v.IsNil() {
+			return nilValue, fmt.Errorf("failed to cast to array from nil interface")
+		}
 		return castArray(t, reflect.ValueOf(v.Interface()))
 	}
 	if kind != reflect.Slice && kind != reflect.Array {
@@ -359,6 +432,9 @@ func castArray(t reflect.Type, v reflect.Value) (reflect.Value, error) {
 func castSlice(t reflect.Type, v reflect.Value) (reflect.Value, error) {
 	kind := v.Type().Kind()
 	if kind == reflect.Interface {
+		if v.IsNil() {
+			return nilValue, fmt.Errorf("failed to cast to slice from nil interface")
+		}
 		return castSlice(t, reflect.ValueOf(v.Interface()))
 	}
 	if kind != reflect.Slice && kind != reflect.Array {
@@ -396,6 +472,9 @@ func castMap(t reflect.Type, v reflect.Value) (reflect.Value, error) {
 		}
 		return ret, nil
 	case reflect.Interface:
+		if v.IsNil() {
+			return nilValue, fmt.Errorf("failed to cast to map from nil interface")
+		}
 		return castMap(t, reflect.ValueOf(v.Interface()))
 	case reflect.Slice:
 		if v.Len() > 0 {
@@ -435,6 +514,9 @@ func castStruct(t reflect.Type, v reflect.Value) (reflect.Value, error) {
 		}
 		return ret, nil
 	case reflect.Interface:
+		if v.IsNil() {
+			return nilValue, fmt.Errorf("failed to cast to struct from nil interface")
+		}
 		return castStruct(t, reflect.ValueOf(v.Interface()))
 	case reflect.Slice:
 		if v.Len() > 0 {

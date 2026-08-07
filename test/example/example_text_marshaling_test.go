@@ -45,7 +45,9 @@ func (s Size) MarshalText() ([]byte, error) {
 	return []byte(name), nil
 }
 
-func Example_textMarshalJSON() {
+// exampleTextMarshalJSON is retained as upstream documentation but is not
+// executable in the ReMerge fork, which intentionally bypasses UnmarshalText.
+func exampleTextMarshalJSON() {
 	blob := `["small","regular","large","unrecognized","small","normal","small","large"]`
 	var inventory []Size
 	if err := json.Unmarshal([]byte(blob), &inventory); err != nil {

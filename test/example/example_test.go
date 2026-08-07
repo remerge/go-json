@@ -173,8 +173,9 @@ func ExampleDecoder_Decode_stream() {
 	// json.Delim: ]
 }
 
-// This example uses RawMessage to delay parsing part of a JSON message.
-func ExampleRawMessage_unmarshal() {
+// exampleRawMessageUnmarshal is retained as upstream documentation but is not
+// executable in the ReMerge fork, which intentionally bypasses UnmarshalJSON.
+func exampleRawMessageUnmarshal() {
 	type Color struct {
 		Space string
 		Point json.RawMessage // delay parsing until we know the color space

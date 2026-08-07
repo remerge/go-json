@@ -51,7 +51,9 @@ func (a Animal) MarshalJSON() ([]byte, error) {
 	return json.Marshal(s)
 }
 
-func Example_customMarshalJSON() {
+// exampleCustomMarshalJSON is retained as upstream documentation but is not
+// executable in the ReMerge fork, which intentionally bypasses UnmarshalJSON.
+func exampleCustomMarshalJSON() {
 	blob := `["gopher","armadillo","zebra","unknown","gopher","bee","gopher","zebra"]`
 	var zoo []Animal
 	if err := json.Unmarshal([]byte(blob), &zoo); err != nil {

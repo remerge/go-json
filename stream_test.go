@@ -243,6 +243,7 @@ func TestDecoderBuffered(t *testing.T) {
 }
 
 func TestRawMessage(t *testing.T) {
+	skipUpstreamInterfaceConformance(t)
 	var data struct {
 		X  float64
 		Id json.RawMessage
@@ -267,6 +268,7 @@ func TestRawMessage(t *testing.T) {
 }
 
 func TestNullRawMessage(t *testing.T) {
+	skipUpstreamInterfaceConformance(t)
 	var data struct {
 		X     float64
 		Id    json.RawMessage

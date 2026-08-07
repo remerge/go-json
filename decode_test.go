@@ -311,6 +311,7 @@ func (u *unmarshalJSON) UnmarshalJSON(b []byte) error {
 }
 
 func Test_UnmarshalJSON(t *testing.T) {
+	skipUpstreamInterfaceConformance(t)
 	t.Run("*struct", func(t *testing.T) {
 		var v unmarshalJSON
 		assertErr(t, json.Unmarshal([]byte(`10`), &v))
@@ -332,6 +333,7 @@ func (u *unmarshalText) UnmarshalText(b []byte) error {
 }
 
 func Test_UnmarshalText(t *testing.T) {
+	skipUpstreamInterfaceConformance(t)
 	t.Run("*struct", func(t *testing.T) {
 		var v unmarshalText
 		assertErr(t, json.Unmarshal([]byte(`"11"`), &v))
@@ -1825,6 +1827,9 @@ func equalError(a, b error) bool {
 func TestUnmarshal(t *testing.T) {
 	for i, tt := range unmarshalTests {
 		t.Run(fmt.Sprintf("%d_%q", i, tt.in), func(t *testing.T) {
+			if isUpstreamInterfaceConformanceCase(i) {
+				skipUpstreamInterfaceConformance(t)
+			}
 			in := []byte(tt.in)
 			if tt.ptr == nil {
 				return
@@ -2042,6 +2047,7 @@ func TestErrorMessageFromMisusedString(t *testing.T) {
 }
 
 func TestRefUnmarshal(t *testing.T) {
+	skipUpstreamInterfaceConformance(t)
 	type S struct {
 		// Ref is defined in encode_test.go.
 		R0 Ref
@@ -2156,6 +2162,7 @@ func TestInterfaceSet(t *testing.T) {
 // JSON null values should be ignored for primitives and string values instead of resulting in an error.
 // Issue 2540
 func TestUnmarshalNulls(t *testing.T) {
+	skipUpstreamInterfaceConformance(t)
 	// Unmarshal docs:
 	// The JSON null value unmarshals into an interface, map, pointer, or slice
 	// by setting that Go value to nil. Because null is often used in JSON to mean
@@ -2428,6 +2435,7 @@ func (t *Time3339) UnmarshalJSON(b []byte) error {
 }
 
 func TestUnmarshalJSONLiteralError(t *testing.T) {
+	skipUpstreamInterfaceConformance(t)
 	var t3 Time3339
 	err := json.Unmarshal([]byte(`"0000-00-00T00:00:00Z"`), &t3)
 	if err == nil {
@@ -2539,6 +2547,7 @@ var invalidUnmarshalTextTests = []struct {
 }
 
 func TestInvalidUnmarshalText(t *testing.T) {
+	skipUpstreamInterfaceConformance(t)
 	buf := []byte(`123`)
 	for _, tt := range invalidUnmarshalTextTests {
 		err := json.Unmarshal(buf, tt.v)
@@ -2555,6 +2564,7 @@ func TestInvalidUnmarshalText(t *testing.T) {
 // Test that string option is ignored for invalid types.
 // Issue 9812.
 func TestInvalidStringOption(t *testing.T) {
+	skipUpstreamInterfaceConformance(t)
 	num := 0
 	item := struct {
 		T time.Time         `json:",string"`
@@ -2746,6 +2756,7 @@ type unmarshalPanic struct{}
 func (unmarshalPanic) UnmarshalJSON([]byte) error { panic(0xdead) }
 
 func TestUnmarshalPanic(t *testing.T) {
+	skipUpstreamInterfaceConformance(t)
 	defer func() {
 		if got := recover(); !reflect.DeepEqual(got, 0xdead) {
 			t.Errorf("panic() = (%T)(%v), want 0xdead", got, got)
@@ -2970,6 +2981,7 @@ func TestDecodeSlice(t *testing.T) {
 }
 
 func TestDecodeMultipleUnmarshal(t *testing.T) {
+	skipUpstreamInterfaceConformance(t)
 	data := []byte(`[{"AA":{"X":[{"a": "A"},{"b": "B"}],"Y":"y","Z":"z"},"BB":"bb"},{"AA":{"X":[],"Y":"y","Z":"z"},"BB":"bb"}]`)
 	var a []json.RawMessage
 	if err := json.Unmarshal(data, &a); err != nil {
@@ -3035,6 +3047,7 @@ func TestDecodeMultipleUnmarshal(t *testing.T) {
 }
 
 func TestMultipleDecodeWithRawMessage(t *testing.T) {
+	skipUpstreamInterfaceConformance(t)
 	original := []byte(`{
 		"Body": {
 			"List": [
@@ -3126,6 +3139,7 @@ func (u *structUnmarshaler) UnmarshalJSON(b []byte) error {
 }
 
 func TestSliceElemUnmarshaler(t *testing.T) {
+	skipUpstreamInterfaceConformance(t)
 	t.Run("int", func(t *testing.T) {
 		var v []intUnmarshaler
 		if err := json.Unmarshal([]byte(`[1,2,3,4,5]`), &v); err != nil {
@@ -3244,6 +3258,7 @@ func (t *keepRefTest) UnmarshalJSON(data []byte) error {
 }
 
 func TestKeepReferenceSlice(t *testing.T) {
+	skipUpstreamInterfaceConformance(t)
 	var v keepRefTest
 	if err := json.Unmarshal([]byte(`[54,"hello"]`), &v); err != nil {
 		t.Fatal(err)
@@ -3482,6 +3497,7 @@ func TestDecodeByteSliceNull(t *testing.T) {
 }
 
 func TestDecodeBackSlash(t *testing.T) {
+	skipUpstreamInterfaceConformance(t)
 	t.Run("unmarshal", func(t *testing.T) {
 		t.Run("string", func(t *testing.T) {
 			var v1 map[string]stdjson.RawMessage
@@ -3673,6 +3689,7 @@ func (t *unmarshalContextStructType) UnmarshalJSON(ctx context.Context, b []byte
 }
 
 func TestDecodeContextOption(t *testing.T) {
+	skipUpstreamInterfaceConformance(t)
 	src := []byte("10")
 	buf := bytes.NewBuffer(src)
 
@@ -3851,6 +3868,7 @@ func TestIssue303(t *testing.T) {
 }
 
 func TestIssue327(t *testing.T) {
+	skipUpstreamInterfaceConformance(t)
 	var v struct {
 		Date time.Time `json:"date"`
 	}
@@ -4008,6 +4026,7 @@ func (t *issue384) UnmarshalJSON(b []byte) error {
 }
 
 func TestIssue384(t *testing.T) {
+	skipUpstreamInterfaceConformance(t)
 	testcases := []string{
 		`{"data": "` + strings.Repeat("-", 500) + `\""}`,
 		`["` + strings.Repeat("-", 508) + `\""]`,

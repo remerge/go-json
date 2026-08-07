@@ -63,7 +63,7 @@ func unmarshalNoCopy(src []byte, v interface{}, optFuncs ...DecodeOptionFunc) er
 	if err := validateType(header.typ, uintptr(header.ptr)); err != nil {
 		return err
 	}
-	dec, err := decoder.CompileToGetNoCopyDecoder(header.typ)
+	dec, err := decoder.CompileToGetDecoder(header.typ)
 	if err != nil {
 		return err
 	}

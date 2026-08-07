@@ -89,6 +89,9 @@ func newArray(*runtime.Type, int) unsafe.Pointer
 //go:linkname typedmemmove reflect.typedmemmove
 func typedmemmove(t *runtime.Type, dst, src unsafe.Pointer)
 
+//go:linkname typedmemclr reflect.typedmemclr
+func typedmemclr(t *runtime.Type, ptr unsafe.Pointer)
+
 func (d *sliceDecoder) errNumber(offset int64) *errors.UnmarshalTypeError {
 	return &errors.UnmarshalTypeError{
 		Value:  "number",
@@ -238,56 +241,38 @@ func (d *sliceDecoder) Decode(ctx *RuntimeContext, cursor, depth int64, p unsafe
 				cursor++
 				return cursor, nil
 			}
+			dst := (*sliceHeader)(p)
+			dst.len = 0
 			idx := 0
-			slice := d.newSlice((*sliceHeader)(p))
-			srcLen := slice.len
-			capacity := slice.cap
-			data := slice.data
 			for {
-				if capacity <= idx {
-					src := sliceHeader{data: data, len: idx, cap: capacity}
-					capacity *= 2
-					data = newArray(d.elemType, capacity)
-					dst := sliceHeader{data: data, len: idx, cap: capacity}
-					copySlice(d.elemType, dst, src)
-				}
-				ep := unsafe.Pointer(uintptr(data) + uintptr(idx)*d.size)
-				// if srcLen is greater than idx, keep the original reference
-				if srcLen <= idx {
-					if d.isElemPointerType {
-						**(**unsafe.Pointer)(unsafe.Pointer(&ep)) = nil // initialize elem pointer
-					} else {
-						// assign new element to the slice
-						typedmemmove(d.elemType, ep, unsafe_New(d.elemType))
+				if dst.cap <= idx {
+					capacity := dst.cap * 2
+					if capacity < defaultSliceCapacity {
+						capacity = defaultSliceCapacity
 					}
+					data := newArray(d.elemType, capacity)
+					if idx > 0 {
+						copySlice(d.elemType, sliceHeader{data: data, len: idx, cap: capacity}, *dst)
+					}
+					dst.data = data
+					dst.cap = capacity
 				}
+				ep := unsafe.Pointer(uintptr(dst.data) + uintptr(idx)*d.size)
+				typedmemclr(d.elemType, ep)
 				c, err := d.valueDecoder.Decode(ctx, cursor, depth, ep)
 				if err != nil {
 					return 0, err
 				}
 				cursor = c
+				idx++
+				dst.len = idx
 				cursor = skipWhiteSpace(buf, cursor)
 				switch buf[cursor] {
 				case ']':
-					slice.cap = capacity
-					slice.len = idx + 1
-					slice.data = data
-					dst := (*sliceHeader)(p)
-					dst.len = idx + 1
-					if dst.len > dst.cap {
-						dst.data = newArray(d.elemType, dst.len)
-						dst.cap = dst.len
-					}
-					copySlice(d.elemType, *dst, *slice)
-					d.releaseSlice(slice)
 					cursor++
 					return cursor, nil
 				case ',':
-					idx++
 				default:
-					slice.cap = capacity
-					slice.data = data
-					d.releaseSlice(slice)
 					return 0, errors.ErrInvalidCharacter(buf[cursor], "slice", cursor)
 				}
 				cursor++

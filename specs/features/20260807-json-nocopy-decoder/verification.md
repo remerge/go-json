@@ -32,8 +32,9 @@ The raw evidence and statistical summary are stored in the workspace Bet Executi
 The Linux timing is directional only because it ran under emulation.
 These measurements do not establish a production request distribution.
 
-## Remaining Gates
+## Completion And Adoption Gates
 
-- Native Linux amd64 benchmark on production-like hardware.
 - Local no-mistakes validation.
-- Sanitized production-derived corpus before any adoption or deployment decision.
+
+The emulated Linux amd64 result is sufficient for this unmerged exploration.
+Before any adoption, merge, or deployment decision, rerun the benchmark on production-like native Linux amd64 hardware and validate against a sanitized production-derived corpus.

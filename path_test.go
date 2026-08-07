@@ -356,6 +356,27 @@ func TestGetPath(t *testing.T) {
 				t.Fatalf("decoded value = %d, want %d", v, int64(1<<24))
 			}
 		})
+		t.Run("accepts exact float64 just below uint64 sentinel", func(t *testing.T) {
+			lower := math.Nextafter(math.Ldexp(1, 64), 0)
+			src := map[string]interface{}{"value": lower}
+			var v uint64
+			if err := path.Get(src, &v); err != nil {
+				t.Fatal(err)
+			}
+			if v != uint64(lower) {
+				t.Fatalf("decoded value = %d, want %d", v, uint64(lower))
+			}
+		})
+		t.Run("rejects uint64 sentinel float64", func(t *testing.T) {
+			src := map[string]interface{}{"value": math.Ldexp(1, 64)}
+			v := uint64(7)
+			if err := path.Get(src, &v); err == nil {
+				t.Fatal("expected error")
+			}
+			if v != 7 {
+				t.Fatalf("destination mutated: got %d, want %d", v, uint64(7))
+			}
+		})
 	})
 	t.Run("supports struct traversal", func(t *testing.T) {
 		type child struct {

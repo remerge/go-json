@@ -8,7 +8,8 @@ import (
 )
 
 var (
-	nilValue = reflect.ValueOf(nil)
+	nilValue               = reflect.ValueOf(nil)
+	maxUint64FloatSentinel = math.Ldexp(1, 64)
 )
 
 func AssignValue(src, dst reflect.Value) error {
@@ -225,7 +226,7 @@ func exactInt64FromFloat(v reflect.Value) (int64, error) {
 
 func exactUint64FromFloat(v reflect.Value) (uint64, error) {
 	f64 := v.Float()
-	if math.IsNaN(f64) || math.IsInf(f64, 0) || f64 < 0 || f64 > float64(math.MaxUint64) {
+	if math.IsNaN(f64) || math.IsInf(f64, 0) || f64 < 0 || f64 >= maxUint64FloatSentinel {
 		return 0, fmt.Errorf("value %v overflows uint64", f64)
 	}
 	if math.Trunc(f64) != f64 {

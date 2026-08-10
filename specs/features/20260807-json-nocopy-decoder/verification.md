@@ -11,6 +11,7 @@
 - Bidder `integration/ssp` under the race detector: passed.
 - Linux amd64 container `go test ./...`: passed.
 - Linux amd64 container `go test -race ./...`: passed on the final candidate.
+- Local no-mistakes review, test, documentation, and lint gate: passed on the final candidate.
 
 ## Contract Evidence
 
@@ -20,21 +21,20 @@ Reuse tests cover growing, shrinking, nested, pointer, and empty slices without 
 
 ## Performance Evidence
 
-Final counterbalanced Darwin arm64 decoding improved 14.59% to 18.03% per fixture and 16.37% geometrically.
-The Darwin decode-plus-native-parse pipeline improved 13.74% to 21.34% per fixture and 17.80% geometrically.
-Decode allocation count fell 26.69% geometrically, while allocated bytes increased 0.62%.
+Final counterbalanced Darwin arm64 decoding improved 13.71% to 18.01% per fixture and 15.95% geometrically.
+The Darwin decode-plus-native-parse pipeline improved 13.27% to 19.49% per fixture and 17.26% geometrically.
+Decode allocation count fell 26.69% geometrically and pipeline allocation count fell 25.51%, while allocated bytes increased 0.62%.
 
-Linux amd64 under OrbStack x86 emulation improved 3.37% to 10.55% per decode fixture and 7.16% geometrically.
-The emulated Linux full pipeline improved 4.17% to 9.59% per fixture and 6.45% geometrically.
-The emulated allocation results matched native arm64.
+An eight-sample final-head Linux amd64 refresh under OrbStack x86 emulation improved 14.96% to 19.62% per decode fixture and 18.05% geometrically.
+The emulated Linux full pipeline improved 14.18% to 18.51% per fixture and 16.30% geometrically.
+An earlier sixteen-sample emulated run on the pre-review candidate measured only 7.16% and 6.45% geometric improvements, respectively.
+Both emulated runs reproduced the native arm64 allocation reductions.
 
 The raw evidence and statistical summary are stored in the workspace Bet Execution Plan evidence directory.
-The Linux timing is directional only because it ran under emulation.
+The large difference between the two Linux runs demonstrates that timing under this emulator is directional only.
 These measurements do not establish a production request distribution.
 
-## Completion And Adoption Gates
-
-- Local no-mistakes validation.
+## Adoption Gates
 
 The emulated Linux amd64 result is sufficient for this unmerged exploration.
 Before any adoption, merge, or deployment decision, rerun the benchmark on production-like native Linux amd64 hardware and validate against a sanitized production-derived corpus.

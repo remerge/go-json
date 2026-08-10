@@ -10,4 +10,4 @@
 - [x] Record paired Darwin arm64 benchmarks.
 - [x] Record paired Linux amd64 emulation benchmarks.
 - [x] Record representative-corpus limitations and final recommendation.
-- [ ] Run no-mistakes local validation without external publication.
+- [x] Run no-mistakes local validation without external publication.

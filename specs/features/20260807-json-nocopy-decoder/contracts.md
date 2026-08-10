@@ -23,6 +23,9 @@ It returns to the existing scalar escape and error path when a backslash or NUL 
 
 ## Bidder Integration Contract
 
+`UnmarshalNoCopy` accepts ordinary byte slices. When the caller already appends a trailing NUL sentinel, the decoder can preserve aliasing to that input and avoid the extra copy needed to add the sentinel itself.
+When the caller does not supply the sentinel, `UnmarshalNoCopy` copies once to append it before decoding.
+
 The bidder continues to append a trailing NUL sentinel before calling `UnmarshalNoCopy`.
 The bidder must discard the request object when no-copy decoding returns an error.
-Strings decoded without escapes may alias the request input buffer and must not outlive that buffer.
+Strings decoded without escapes may alias the request input buffer only when the caller supplied the sentinel, and those strings must not outlive that buffer.

@@ -12,7 +12,7 @@ Improve OpenRTB decoding through portable word-at-a-time string scanning and dir
 - Standard JSON and text unmarshal interfaces must remain bypassed as they are in the existing ReMerge fork.
 - Direct destination slice decoding must run only on the no-copy path.
 - Valid no-copy results must match ordinary and standard-library results for supported plain Go values.
-- The no-copy caller continues to own input-buffer lifetime and must provide the existing trailing NUL sentinel.
+- `UnmarshalNoCopy` must retain the input-buffer lifetime and aliasing contract documented in `contracts.md`.
 
 ## Error Behavior
 

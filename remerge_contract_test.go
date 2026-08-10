@@ -36,7 +36,7 @@ func (v *remergeJSONContract) RemergeUnmarshalJSON([]byte) error {
 	return nil
 }
 
-func TestRemergeInterfaceRoutingContract(t *testing.T) {
+func TestForkInterfaceRoutingContract(t *testing.T) {
 	var decoded standardJSONContract
 	if err := json.Unmarshal([]byte(`{"value":"decoded"}`), &decoded); err != nil {
 		t.Fatalf("Unmarshal returned an error: %v", err)

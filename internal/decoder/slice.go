@@ -89,6 +89,9 @@ func newArray(*runtime.Type, int) unsafe.Pointer
 //go:linkname typedmemmove reflect.typedmemmove
 func typedmemmove(t *runtime.Type, dst, src unsafe.Pointer)
 
+//go:linkname typedmemclr reflect.typedmemclr
+func typedmemclr(t *runtime.Type, ptr unsafe.Pointer)
+
 func (d *sliceDecoder) errNumber(offset int64) *errors.UnmarshalTypeError {
 	return &errors.UnmarshalTypeError{
 		Value:  "number",
@@ -207,6 +210,13 @@ ERROR:
 }
 
 func (d *sliceDecoder) Decode(ctx *RuntimeContext, cursor, depth int64, p unsafe.Pointer) (int64, error) {
+	if ctx.Option.Flags&NoCopyOption != 0 {
+		return d.decodeNoCopy(ctx, cursor, depth, p)
+	}
+	return d.decode(ctx, cursor, depth, p)
+}
+
+func (d *sliceDecoder) decode(ctx *RuntimeContext, cursor, depth int64, p unsafe.Pointer) (int64, error) {
 	buf := ctx.Buf
 	depth++
 	if depth > maxDecodeNestingDepth {
@@ -252,12 +262,10 @@ func (d *sliceDecoder) Decode(ctx *RuntimeContext, cursor, depth int64, p unsafe
 					copySlice(d.elemType, dst, src)
 				}
 				ep := unsafe.Pointer(uintptr(data) + uintptr(idx)*d.size)
-				// if srcLen is greater than idx, keep the original reference
 				if srcLen <= idx {
 					if d.isElemPointerType {
-						**(**unsafe.Pointer)(unsafe.Pointer(&ep)) = nil // initialize elem pointer
+						**(**unsafe.Pointer)(unsafe.Pointer(&ep)) = nil
 					} else {
-						// assign new element to the slice
 						typedmemmove(d.elemType, ep, unsafe_New(d.elemType))
 					}
 				}
@@ -288,6 +296,82 @@ func (d *sliceDecoder) Decode(ctx *RuntimeContext, cursor, depth int64, p unsafe
 					slice.cap = capacity
 					slice.data = data
 					d.releaseSlice(slice)
+					return 0, errors.ErrInvalidCharacter(buf[cursor], "slice", cursor)
+				}
+				cursor++
+			}
+		case '-', '0', '1', '2', '3', '4', '5', '6', '7', '8', '9':
+			return 0, d.errNumber(cursor)
+		default:
+			return 0, errors.ErrUnexpectedEndOfJSON("slice", cursor)
+		}
+	}
+}
+
+func (d *sliceDecoder) decodeNoCopy(ctx *RuntimeContext, cursor, depth int64, p unsafe.Pointer) (int64, error) {
+	buf := ctx.Buf
+	depth++
+	if depth > maxDecodeNestingDepth {
+		return 0, errors.ErrExceededMaxDepth(buf[cursor], cursor)
+	}
+
+	for {
+		switch buf[cursor] {
+		case ' ', '\n', '\t', '\r':
+			cursor++
+			continue
+		case 'n':
+			if err := validateNull(buf, cursor); err != nil {
+				return 0, err
+			}
+			cursor += 4
+			typedmemmove(sliceType, p, nilSlice)
+			return cursor, nil
+		case '[':
+			cursor++
+			cursor = skipWhiteSpace(buf, cursor)
+			if buf[cursor] == ']' {
+				dst := (*sliceHeader)(p)
+				if dst.data == nil {
+					dst.data = newArray(d.elemType, 0)
+				} else {
+					dst.len = 0
+				}
+				cursor++
+				return cursor, nil
+			}
+			dst := (*sliceHeader)(p)
+			dst.len = 0
+			idx := 0
+			for {
+				if dst.cap <= idx {
+					capacity := dst.cap * 2
+					if capacity < defaultSliceCapacity {
+						capacity = defaultSliceCapacity
+					}
+					data := newArray(d.elemType, capacity)
+					if idx > 0 {
+						copySlice(d.elemType, sliceHeader{data: data, len: idx, cap: capacity}, *dst)
+					}
+					dst.data = data
+					dst.cap = capacity
+				}
+				ep := unsafe.Pointer(uintptr(dst.data) + uintptr(idx)*d.size)
+				typedmemclr(d.elemType, ep)
+				c, err := d.valueDecoder.Decode(ctx, cursor, depth, ep)
+				if err != nil {
+					return 0, err
+				}
+				cursor = c
+				idx++
+				dst.len = idx
+				cursor = skipWhiteSpace(buf, cursor)
+				switch buf[cursor] {
+				case ']':
+					cursor++
+					return cursor, nil
+				case ',':
+				default:
 					return 0, errors.ErrInvalidCharacter(buf[cursor], "slice", cursor)
 				}
 				cursor++

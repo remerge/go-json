@@ -211,12 +211,11 @@ func MarshalIndentWithOption(v interface{}, prefix, indent string, optFuncs ...E
 // the value pointed at by the pointer. If the pointer is nil, Unmarshal
 // allocates a new value for it to point to.
 //
-// To unmarshal JSON into a value implementing the Unmarshaler interface,
-// Unmarshal calls that value's UnmarshalJSON method, including
-// when the input is a JSON null.
-// Otherwise, if the value implements encoding.TextUnmarshaler
-// and the input is a JSON quoted string, Unmarshal calls that value's
-// UnmarshalText method with the unquoted form of the string.
+// To preserve this fork's established bidder behavior, Unmarshal keeps
+// ordinary concrete values on the compiled decoder path instead of
+// dispatching them through json.Unmarshaler or encoding.TextUnmarshaler.
+// Types that implement RemergeUnmarshalJSON continue to receive that hook,
+// and json.RawMessage keeps its raw-byte copy behavior.
 //
 // To unmarshal JSON into a struct, Unmarshal matches incoming object
 // keys to the keys used by Marshal (either the struct field name or its tag),
@@ -263,7 +262,7 @@ func MarshalIndentWithOption(v interface{}, prefix, indent string, optFuncs ...E
 //
 // The JSON null value unmarshals into an interface, map, pointer, or slice
 // by setting that Go value to nil. Because null is often used in JSON to mean
-// “not present,” unmarshaling a JSON null into any other Go type has no effect
+// "not present," unmarshaling a JSON null into any other Go type has no effect
 // on the value and produces no error.
 //
 // When unmarshaling quoted strings, invalid UTF-8 or
@@ -289,6 +288,20 @@ func UnmarshalNoEscape(data []byte, v interface{}, optFuncs ...DecodeOptionFunc)
 	return unmarshalNoEscape(data, v, optFuncs...)
 }
 
+// UnmarshalNoCopy parses the JSON-encoded data and stores the result in the
+// value pointed to by v using the fork's no-copy decoder path.
+//
+// UnmarshalNoCopy keeps the same concrete-type routing as Unmarshal while
+// enabling direct destination slice mutation. If data already ends with a
+// trailing NUL sentinel, decoded strings without escapes may alias that input
+// and escaped strings may be unescaped by mutating that caller-owned buffer in
+// place. That sentinel only terminates the document when it is the final byte
+// after any trailing JSON whitespace; junk after a sentinel is rejected.
+// Otherwise, UnmarshalNoCopy appends the sentinel by copying the input once
+// before decoding.
+//
+// After any decoding error, callers must discard the destination because it may
+// contain a partial result.
 func UnmarshalNoCopy(data []byte, v interface{}, optFuncs ...DecodeOptionFunc) error {
 	return unmarshalNoCopy(data, v, optFuncs...)
 }

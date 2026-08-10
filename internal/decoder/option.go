@@ -8,6 +8,7 @@ const (
 	FirstWinOption OptionFlags = 1 << iota
 	ContextOption
 	PathOption
+	NoCopyOption
 )
 
 type Option struct {

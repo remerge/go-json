@@ -3,6 +3,7 @@ package decoder
 import (
 	"bytes"
 	"encoding"
+	"fmt"
 	"unicode"
 	"unicode/utf16"
 	"unicode/utf8"
@@ -142,8 +143,11 @@ func (d *unmarshalTextDecoder) Decode(ctx *RuntimeContext, cursor, depth int64, 
 	return end, nil
 }
 
-//nolint:nonamedreturns
-func unquoteBytes(s []byte) (t []byte, ok bool) {
+func (d *unmarshalTextDecoder) DecodePath(ctx *RuntimeContext, cursor, depth int64) ([][]byte, int64, error) {
+	return nil, 0, fmt.Errorf("json: unmarshal text decoder does not support decode path")
+}
+
+func unquoteBytes(s []byte) (t []byte, ok bool) { //nolint: nonamedreturns
 	length := len(s)
 	if length < 2 || s[0] != '"' || s[length-1] != '"' {
 		return

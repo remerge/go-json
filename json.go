@@ -293,9 +293,10 @@ func UnmarshalNoEscape(data []byte, v interface{}, optFuncs ...DecodeOptionFunc)
 //
 // UnmarshalNoCopy keeps the same concrete-type routing as Unmarshal while
 // enabling direct destination slice mutation. If data already ends with a
-// trailing NUL sentinel, decoded strings without escapes may alias that input.
-// Otherwise, UnmarshalNoCopy appends the sentinel by copying the input once
-// before decoding.
+// trailing NUL sentinel, decoded strings without escapes may alias that input
+// and escaped strings may be unescaped by mutating that caller-owned buffer in
+// place. Otherwise, UnmarshalNoCopy appends the sentinel by copying the input
+// once before decoding.
 //
 // After any decoding error, callers must discard the destination because it may
 // contain a partial result.

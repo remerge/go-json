@@ -77,7 +77,7 @@ func unmarshalNoCopy(src []byte, v interface{}, optFuncs ...DecodeOptionFunc) er
 		return err
 	}
 	decoder.ReleaseRuntimeContext(rctx)
-	return validateEndBuf(buf, cursor)
+	return validateEndBufAt(buf, cursor, int64(len(buf)-1))
 }
 
 func unmarshalContext(ctx context.Context, data []byte, v interface{}, optFuncs ...DecodeOptionFunc) error {
@@ -171,13 +171,19 @@ func unmarshalNoEscape(data []byte, v interface{}, optFuncs ...DecodeOptionFunc)
 }
 
 func validateEndBuf(src []byte, cursor int64) error {
+	return validateEndBufAt(src, cursor, int64(len(src)-1))
+}
+
+func validateEndBufAt(src []byte, cursor, end int64) error {
 	for {
 		switch src[cursor] {
 		case ' ', '\t', '\n', '\r':
 			cursor++
 			continue
 		case nul:
-			return nil
+			if cursor == end {
+				return nil
+			}
 		}
 		return errors.ErrSyntax(
 			fmt.Sprintf("invalid character '%c' after top-level value", src[cursor]),

@@ -141,6 +141,57 @@ func TestUnmarshalNoCopyAcceptsCallerOwnedSlicesWithoutSentinel(t *testing.T) {
 	}
 }
 
+func TestUnmarshalNoCopyMutatesSentinelBackedEscapedStringsInPlace(t *testing.T) {
+	input := append([]byte(`{"value":"he\nllo"}`), 0)
+	wantInput := append([]byte(nil), input...)
+
+	var got noCopyStringContainer
+	if err := json.UnmarshalNoCopy(input, &got); err != nil {
+		t.Fatalf("UnmarshalNoCopy: %v", err)
+	}
+	if got.Value != "he\nllo" {
+		t.Fatalf("decoded value = %q, want %q", got.Value, "he\nllo")
+	}
+	if bytes.Equal(input, wantInput) {
+		t.Fatalf("expected caller-owned sentinel buffer mutation")
+	}
+	if !bytes.Contains(input, []byte{'\n'}) {
+		t.Fatalf("expected unescaped newline in mutated buffer: %q", input)
+	}
+}
+
+func TestUnmarshalNoCopyValidatesSentinelTermination(t *testing.T) {
+	t.Run("valid sentinel at end", func(t *testing.T) {
+		input := append([]byte(`{"value":"ok"}`), 0)
+		var got noCopyStringContainer
+		if err := json.UnmarshalNoCopy(input, &got); err != nil {
+			t.Fatalf("UnmarshalNoCopy: %v", err)
+		}
+		if got.Value != "ok" {
+			t.Fatalf("decoded value = %q, want %q", got.Value, "ok")
+		}
+	})
+
+	t.Run("trailing whitespace before sentinel", func(t *testing.T) {
+		input := append([]byte("{\"value\":\"ok\"} \n\t"), 0)
+		var got noCopyStringContainer
+		if err := json.UnmarshalNoCopy(input, &got); err != nil {
+			t.Fatalf("UnmarshalNoCopy: %v", err)
+		}
+		if got.Value != "ok" {
+			t.Fatalf("decoded value = %q, want %q", got.Value, "ok")
+		}
+	})
+
+	t.Run("junk after terminating sentinel", func(t *testing.T) {
+		input := append([]byte("{\"value\":\"ok\"}\x00junk"), 0)
+		var got noCopyStringContainer
+		if err := json.UnmarshalNoCopy(input, &got); err == nil {
+			t.Fatal("expected syntax error")
+		}
+	})
+}
+
 func TestUnmarshalNoCopyPreservesAliasingForSentinelTerminatedSlices(t *testing.T) {
 	input := append([]byte(`{"value":"hello"}`), 0)
 

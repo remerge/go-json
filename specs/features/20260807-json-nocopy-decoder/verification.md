@@ -21,8 +21,8 @@ Reuse tests cover growing, shrinking, nested, pointer, and empty slices without 
 
 ## Performance Evidence
 
-Final counterbalanced Darwin arm64 decoding improved 13.71% to 18.01% per fixture and 15.95% geometrically.
-The Darwin decode-plus-native-parse pipeline improved 13.27% to 19.49% per fixture and 17.26% geometrically.
+Final counterbalanced Darwin arm64 decoding improved 12.83% to 19.55% per fixture and 16.95% geometrically.
+The Darwin decode-plus-native-parse pipeline improved 14.21% to 19.57% per fixture and 17.31% geometrically.
 Decode allocation count fell 26.69% geometrically and pipeline allocation count fell 25.51%, while allocated bytes increased 0.62%.
 
 An eight-sample final-head Linux amd64 refresh under OrbStack x86 emulation improved 14.96% to 19.62% per decode fixture and 18.05% geometrically.

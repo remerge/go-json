@@ -295,8 +295,10 @@ func UnmarshalNoEscape(data []byte, v interface{}, optFuncs ...DecodeOptionFunc)
 // enabling direct destination slice mutation. If data already ends with a
 // trailing NUL sentinel, decoded strings without escapes may alias that input
 // and escaped strings may be unescaped by mutating that caller-owned buffer in
-// place. Otherwise, UnmarshalNoCopy appends the sentinel by copying the input
-// once before decoding.
+// place. That sentinel only terminates the document when it is the final byte
+// after any trailing JSON whitespace; junk after a sentinel is rejected.
+// Otherwise, UnmarshalNoCopy appends the sentinel by copying the input once
+// before decoding.
 //
 // After any decoding error, callers must discard the destination because it may
 // contain a partial result.

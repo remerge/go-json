@@ -3,6 +3,7 @@ package decoder
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"unsafe"
 
 	"github.com/goccy/go-json/internal/errors"
@@ -98,6 +99,10 @@ func (d *unmarshalJSONDecoder) Decode(ctx *RuntimeContext, cursor, depth int64, 
 	return end, nil
 }
 
+func (d *unmarshalJSONDecoder) DecodePath(ctx *RuntimeContext, cursor, depth int64) ([][]byte, int64, error) {
+	return nil, 0, fmt.Errorf("json: unmarshal json decoder does not support decode path")
+}
+
 type remergeUnmarshalJSONDecoder struct {
 	typ        *runtime.Type
 	structName string
@@ -137,17 +142,6 @@ func (d *remergeUnmarshalJSONDecoder) DecodeStream(s *Stream, depth int64, p uns
 		ptr: p,
 	}))
 	switch v := v.(type) {
-	// case unmarshalerContext:
-	// 	var ctx context.Context
-	// 	if (s.Option.Flags & ContextOption) != 0 {
-	// 		ctx = s.Option.Context
-	// 	} else {
-	// 		ctx = context.Background()
-	// 	}
-	// 	if err := v.RemergeUnmarshalJSON(ctx, dst); err != nil {
-	// 		d.annotateError(s.cursor, err)
-	// 		return err
-	// 	}
 	case remergeUnmarshaler:
 		if err := v.RemergeUnmarshalJSON(dst); err != nil {
 			d.annotateError(s.cursor, err)
@@ -173,16 +167,13 @@ func (d *remergeUnmarshalJSONDecoder) Decode(ctx *RuntimeContext, cursor, depth 
 		typ: d.typ,
 		ptr: p,
 	}))
-	if (ctx.Option.Flags & ContextOption) != 0 {
-		if err := v.(unmarshalerContext).UnmarshalJSON(ctx.Option.Context, dst); err != nil {
-			d.annotateError(cursor, err)
-			return 0, err
-		}
-	} else {
-		if err := v.(remergeUnmarshaler).RemergeUnmarshalJSON(dst); err != nil {
-			d.annotateError(cursor, err)
-			return 0, err
-		}
+	if err := v.(remergeUnmarshaler).RemergeUnmarshalJSON(dst); err != nil {
+		d.annotateError(cursor, err)
+		return 0, err
 	}
 	return end, nil
+}
+
+func (d *remergeUnmarshalJSONDecoder) DecodePath(ctx *RuntimeContext, cursor, depth int64) ([][]byte, int64, error) {
+	return nil, 0, fmt.Errorf("json: remerge unmarshal json decoder does not support decode path")
 }

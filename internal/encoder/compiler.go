@@ -5,12 +5,42 @@ import (
 	"encoding"
 	"encoding/json"
 	"reflect"
+	"sync"
 	"sync/atomic"
 	"unsafe"
 
 	"github.com/goccy/go-json/internal/errors"
 	"github.com/goccy/go-json/internal/runtime"
 )
+
+func CompileToGetCodeSet(ctx *RuntimeContext, typeptr uintptr) (*OpcodeSet, error) {
+	initEncoder()
+	if typeptr > typeAddr.MaxTypeAddr || typeptr < typeAddr.BaseTypeAddr {
+		codeSet, err := compileToGetCodeSetSlowPath(typeptr)
+		if err != nil {
+			return nil, err
+		}
+		return getFilteredCodeSetIfNeeded(ctx, codeSet)
+	}
+	index := (typeptr - typeAddr.BaseTypeAddr) >> typeAddr.AddrShift
+	if codeSet := cachedOpcodeSets[index].Load(); codeSet != nil {
+		filtered, err := getFilteredCodeSetIfNeeded(ctx, codeSet)
+		if err != nil {
+			return nil, err
+		}
+		return filtered, nil
+	}
+	codeSet, err := newCompiler().compile(typeptr)
+	if err != nil {
+		return nil, err
+	}
+	filtered, err := getFilteredCodeSetIfNeeded(ctx, codeSet)
+	if err != nil {
+		return nil, err
+	}
+	cachedOpcodeSets[index].Store(codeSet)
+	return filtered, nil
+}
 
 type marshalerContext interface {
 	MarshalJSON(context.Context) ([]byte, error)
@@ -21,17 +51,20 @@ var (
 	marshalJSONContextType = reflect.TypeOf((*marshalerContext)(nil)).Elem()
 	marshalTextType        = reflect.TypeOf((*encoding.TextMarshaler)(nil)).Elem()
 	jsonNumberType         = reflect.TypeOf(json.Number(""))
-	cachedOpcodeSets       []*OpcodeSet
+	cachedOpcodeSets       []atomic.Pointer[OpcodeSet]
 	cachedOpcodeMap        unsafe.Pointer // map[uintptr]*OpcodeSet
 	typeAddr               *runtime.TypeAddr
+	initEncoderOnce        sync.Once
 )
 
-func init() {
-	typeAddr = runtime.AnalyzeTypeAddr()
-	if typeAddr == nil {
-		typeAddr = &runtime.TypeAddr{}
-	}
-	cachedOpcodeSets = make([]*OpcodeSet, typeAddr.AddrRange>>typeAddr.AddrShift+1)
+func initEncoder() {
+	initEncoderOnce.Do(func() {
+		typeAddr = runtime.AnalyzeTypeAddr()
+		if typeAddr == nil {
+			typeAddr = &runtime.TypeAddr{}
+		}
+		cachedOpcodeSets = make([]atomic.Pointer[OpcodeSet], typeAddr.AddrRange>>typeAddr.AddrShift+1)
+	})
 }
 
 func loadOpcodeMap() map[uintptr]*OpcodeSet {
@@ -480,7 +513,7 @@ func (c *Compiler) mapCode(typ *runtime.Type) (*MapCode, error) {
 
 func (c *Compiler) listElemCode(typ *runtime.Type) (Code, error) {
 	switch {
-	case c.isPtrMarshalJSONType(typ):
+	case c.implementsMarshalJSONType(typ) || c.implementsMarshalJSONType(runtime.PtrTo(typ)):
 		return c.marshalJSONCode(typ)
 	case !typ.Implements(marshalTextType) && runtime.PtrTo(typ).Implements(marshalTextType):
 		return c.marshalTextCode(typ)
@@ -506,8 +539,6 @@ func (c *Compiler) listElemCode(typ *runtime.Type) (Code, error) {
 
 func (c *Compiler) mapKeyCode(typ *runtime.Type) (Code, error) {
 	switch {
-	case c.implementsMarshalJSON(typ):
-		return c.marshalJSONCode(typ)
 	case c.implementsMarshalText(typ):
 		return c.marshalTextCode(typ)
 	}
@@ -619,6 +650,13 @@ func (c *Compiler) structCode(typ *runtime.Type, isPtr bool) (*StructCode, error
 	return code, nil
 }
 
+func toElemType(t *runtime.Type) *runtime.Type {
+	for t.Kind() == reflect.Ptr {
+		t = t.Elem()
+	}
+	return t
+}
+
 func (c *Compiler) structFieldCode(structCode *StructCode, tag *runtime.StructTag, isPtr, isOnlyOneFirstField bool) (*StructFieldCode, error) {
 	field := tag.Field
 	fieldType := runtime.Type2RType(field.Type)
@@ -628,7 +666,7 @@ func (c *Compiler) structFieldCode(structCode *StructCode, tag *runtime.StructTa
 		key:           tag.Key,
 		tag:           tag,
 		offset:        field.Offset,
-		isAnonymous:   field.Anonymous && !tag.IsTaggedKey,
+		isAnonymous:   field.Anonymous && !tag.IsTaggedKey && toElemType(fieldType).Kind() == reflect.Struct,
 		isTaggedKey:   tag.IsTaggedKey,
 		isNilableType: c.isNilableType(fieldType),
 		isNilCheck:    true,
@@ -827,34 +865,10 @@ func (c *Compiler) isMovePointerPositionFromHeadToFirstMarshalTextFieldCase(typ 
 
 func (c *Compiler) implementsMarshalJSON(typ *runtime.Type) bool {
 	return false
-	//if !c.implementsMarshalJSONType(typ) {
-	//	return false
-	//}
-	//if typ.Kind() != reflect.Ptr {
-	//	return true
-	//}
-	//// type kind is reflect.Ptr
-	//if !c.implementsMarshalJSONType(typ.Elem()) {
-	//	return true
-	//}
-	//// needs to dereference
-	//return false
 }
 
 func (c *Compiler) implementsMarshalText(typ *runtime.Type) bool {
 	return false
-	//if !typ.Implements(marshalTextType) {
-	//	return false
-	//}
-	//if typ.Kind() != reflect.Ptr {
-	//	return true
-	//}
-	//// type kind is reflect.Ptr
-	//if !typ.Elem().Implements(marshalTextType) {
-	//	return true
-	//}
-	//// needs to dereference
-	//return false
 }
 
 func (c *Compiler) isNilableType(typ *runtime.Type) bool {

@@ -7,9 +7,12 @@ type OptionFlags uint8
 const (
 	FirstWinOption OptionFlags = 1 << iota
 	ContextOption
+	PathOption
+	NoCopyOption
 )
 
 type Option struct {
 	Flags   OptionFlags
 	Context context.Context
+	Path    *Path
 }

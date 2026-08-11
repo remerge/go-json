@@ -59,27 +59,25 @@ func unmarshalNoCopy(src []byte, v interface{}, optFuncs ...DecodeOptionFunc) er
 	if err := validateType(header.typ, uintptr(header.ptr)); err != nil {
 		return err
 	}
-
-	if err := validateType(header.typ, uintptr(header.ptr)); err != nil {
-		return err
-	}
 	dec, err := decoder.CompileToGetDecoder(header.typ)
 	if err != nil {
 		return err
 	}
+	buf := ensureDecodeSentinel(src)
 	rctx := decoder.TakeRuntimeContext()
-	rctx.Buf = src
+	rctx.Buf = buf
 	rctx.Option.Flags = 0
 	for _, optFunc := range optFuncs {
 		optFunc(rctx.Option)
 	}
+	rctx.Option.Flags |= decoder.NoCopyOption
 	cursor, err := dec.Decode(rctx, 0, 0, header.ptr)
 	if err != nil {
 		decoder.ReleaseRuntimeContext(rctx)
 		return err
 	}
 	decoder.ReleaseRuntimeContext(rctx)
-	return validateEndBuf(src, cursor)
+	return validateEndBufAt(buf, cursor, int64(len(buf)-1))
 }
 
 func unmarshalContext(ctx context.Context, data []byte, v interface{}, optFuncs ...DecodeOptionFunc) error {
@@ -112,6 +110,37 @@ func unmarshalContext(ctx context.Context, data []byte, v interface{}, optFuncs 
 	return validateEndBuf(src, cursor)
 }
 
+var (
+	pathDecoder = decoder.NewPathDecoder()
+)
+
+func extractFromPath(path *Path, data []byte, optFuncs ...DecodeOptionFunc) ([][]byte, error) {
+	if path.path.RootSelectorOnly {
+		return [][]byte{data}, nil
+	}
+	src := make([]byte, len(data)+1) // append nul byte to the end
+	copy(src, data)
+
+	ctx := decoder.TakeRuntimeContext()
+	ctx.Buf = src
+	ctx.Option.Flags = 0
+	ctx.Option.Flags |= decoder.PathOption
+	ctx.Option.Path = path.path
+	for _, optFunc := range optFuncs {
+		optFunc(ctx.Option)
+	}
+	paths, cursor, err := pathDecoder.DecodePath(ctx, 0, 0)
+	if err != nil {
+		decoder.ReleaseRuntimeContext(ctx)
+		return nil, err
+	}
+	decoder.ReleaseRuntimeContext(ctx)
+	if err := validateEndBuf(src, cursor); err != nil {
+		return nil, err
+	}
+	return paths, nil
+}
+
 func unmarshalNoEscape(data []byte, v interface{}, optFuncs ...DecodeOptionFunc) error {
 	src := make([]byte, len(data)+1) // append nul byte to the end
 	copy(src, data)
@@ -142,19 +171,34 @@ func unmarshalNoEscape(data []byte, v interface{}, optFuncs ...DecodeOptionFunc)
 }
 
 func validateEndBuf(src []byte, cursor int64) error {
+	return validateEndBufAt(src, cursor, int64(len(src)-1))
+}
+
+func validateEndBufAt(src []byte, cursor, end int64) error {
 	for {
 		switch src[cursor] {
 		case ' ', '\t', '\n', '\r':
 			cursor++
 			continue
 		case nul:
-			return nil
+			if cursor == end {
+				return nil
+			}
 		}
 		return errors.ErrSyntax(
 			fmt.Sprintf("invalid character '%c' after top-level value", src[cursor]),
 			cursor+1,
 		)
 	}
+}
+
+func ensureDecodeSentinel(src []byte) []byte {
+	if len(src) != 0 && src[len(src)-1] == nul {
+		return src
+	}
+	buf := make([]byte, len(src)+1)
+	copy(buf, src)
+	return buf
 }
 
 //nolint:staticcheck

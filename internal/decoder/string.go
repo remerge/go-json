@@ -2,7 +2,9 @@ package decoder
 
 import (
 	"bytes"
+	"encoding/binary"
 	"fmt"
+	"math/bits"
 	"reflect"
 	"unicode"
 	"unicode/utf16"
@@ -58,6 +60,17 @@ func (d *stringDecoder) Decode(ctx *RuntimeContext, cursor, depth int64, p unsaf
 	cursor = c
 	**(**string)(unsafe.Pointer(&p)) = *(*string)(unsafe.Pointer(&bytes))
 	return cursor, nil
+}
+
+func (d *stringDecoder) DecodePath(ctx *RuntimeContext, cursor, depth int64) ([][]byte, int64, error) {
+	bytes, c, err := d.decodeByte(ctx.Buf, cursor)
+	if err != nil {
+		return nil, 0, err
+	}
+	if bytes == nil {
+		return [][]byte{nullbytes}, c, nil
+	}
+	return [][]byte{bytes}, c, nil
 }
 
 var (
@@ -171,6 +184,7 @@ RETRY:
 		if !s.read() {
 			return nil, errors.ErrInvalidCharacter(s.char(), "escaped string", s.totalOffset())
 		}
+		p = s.bufptr()
 		goto RETRY
 	default:
 		return nil, errors.ErrUnexpectedEndOfJSON("string", s.totalOffset())
@@ -315,6 +329,9 @@ func (d *stringDecoder) decodeByte(buf []byte, cursor int64) ([]byte, int64, err
 		case '"':
 			cursor++
 			start := cursor
+			if end, ok := fastUnescapedStringEnd(buf, cursor); ok {
+				return buf[start:end], end + 1, nil
+			}
 			b := (*sliceHeader)(unsafe.Pointer(&buf)).data
 			escaped := 0
 			for {
@@ -363,6 +380,39 @@ func (d *stringDecoder) decodeByte(buf []byte, cursor int64) ([]byte, int64, err
 			return nil, 0, errors.ErrInvalidBeginningOfValue(buf[cursor], cursor)
 		}
 	}
+}
+
+func fastUnescapedStringEnd(buf []byte, cursor int64) (int64, bool) {
+	const (
+		ones      = uint64(0x0101010101010101)
+		highBits  = uint64(0x8080808080808080)
+		quotes    = uint64(0x2222222222222222)
+		backslash = uint64(0x5c5c5c5c5c5c5c5c)
+	)
+	hasZeroByte := func(v uint64) uint64 {
+		return (v - ones) & ^v & highBits
+	}
+
+	i := int(cursor)
+	for i+8 <= len(buf) {
+		word := binary.LittleEndian.Uint64(buf[i:])
+		mask := hasZeroByte(word) | hasZeroByte(word^quotes) | hasZeroByte(word^backslash)
+		if mask != 0 {
+			i += bits.TrailingZeros64(mask) / 8
+			return int64(i), buf[i] == '"'
+		}
+		i += 8
+	}
+	for i < len(buf) {
+		switch buf[i] {
+		case '"':
+			return int64(i), true
+		case '\\', 0:
+			return int64(i), false
+		}
+		i++
+	}
+	return int64(i), false
 }
 
 var unescapeMap = [256]byte{

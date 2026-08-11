@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"reflect"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"unicode"
 	"unsafe"
@@ -12,27 +13,53 @@ import (
 	"github.com/goccy/go-json/internal/runtime"
 )
 
+func CompileToGetDecoder(typ *runtime.Type) (Decoder, error) {
+	initDecoder()
+	typeptr := uintptr(unsafe.Pointer(typ))
+	if typeptr > typeAddr.MaxTypeAddr || typeptr < typeAddr.BaseTypeAddr {
+		return compileToGetDecoderSlowPath(typeptr, typ)
+	}
+
+	index := (typeptr - typeAddr.BaseTypeAddr) >> typeAddr.AddrShift
+	if dec := cachedDecoder[index].Load(); dec != nil {
+		return *dec, nil
+	}
+
+	dec, err := compileHead(typ, map[uintptr]Decoder{})
+	if err != nil {
+		return nil, err
+	}
+	cachedDecoder[index].Store(&dec)
+	return dec, nil
+}
+
 var (
-	jsonNumberType   = reflect.TypeOf(json.Number(""))
-	typeAddr         *runtime.TypeAddr
-	cachedDecoderMap unsafe.Pointer // map[uintptr]decoder
-	cachedDecoder    []Decoder
+	jsonNumberType     = reflect.TypeOf(json.Number(""))
+	jsonRawMessageType = reflect.TypeOf(json.RawMessage(nil))
+	typeAddr           *runtime.TypeAddr
+	cachedDecoderMap   unsafe.Pointer // map[uintptr]decoder
+	cachedDecoder      []atomic.Pointer[Decoder]
+	initOnce           sync.Once
 )
 
-func init() {
-	typeAddr = runtime.AnalyzeTypeAddr()
-	if typeAddr == nil {
-		typeAddr = &runtime.TypeAddr{}
-	}
-	cachedDecoder = make([]Decoder, typeAddr.AddrRange>>typeAddr.AddrShift+1)
+func initDecoder() {
+	initOnce.Do(func() {
+		typeAddr = runtime.AnalyzeTypeAddr()
+		if typeAddr == nil {
+			typeAddr = &runtime.TypeAddr{}
+		}
+		cachedDecoder = make([]atomic.Pointer[Decoder], typeAddr.AddrRange>>typeAddr.AddrShift+1)
+	})
 }
 
 func loadDecoderMap() map[uintptr]Decoder {
+	initDecoder()
 	p := atomic.LoadPointer(&cachedDecoderMap)
 	return *(*map[uintptr]Decoder)(unsafe.Pointer(&p))
 }
 
 func storeDecoder(typ uintptr, dec Decoder, m map[uintptr]Decoder) {
+	initDecoder()
 	newDecoderMap := make(map[uintptr]Decoder, len(m)+1)
 	newDecoderMap[typ] = dec
 
@@ -58,25 +85,28 @@ func compileToGetDecoderSlowPath(typeptr uintptr, typ *runtime.Type) (Decoder, e
 }
 
 func compileHead(typ *runtime.Type, structTypeToDecoder map[uintptr]Decoder) (Decoder, error) {
-	//switch {
-	//case implementsUnmarshalJSONType(runtime.PtrTo(typ)):
-	//	return newUnmarshalJSONDecoder(runtime.PtrTo(typ), "", ""), nil
-	//case runtime.PtrTo(typ).Implements(unmarshalTextType):
-	//	return newUnmarshalTextDecoder(runtime.PtrTo(typ), "", ""), nil
-	//}
+	// switch {
+	// case implementsUnmarshalJSONType(runtime.PtrTo(typ)):
+	// 	return newUnmarshalJSONDecoder(runtime.PtrTo(typ), "", ""), nil
+	// case runtime.PtrTo(typ).Implements(unmarshalTextType):
+	// 	return newUnmarshalTextDecoder(runtime.PtrTo(typ), "", ""), nil
+	// }
 	return compile(typ.Elem(), "", "", structTypeToDecoder)
 }
 
 func compile(typ *runtime.Type, structName, fieldName string, structTypeToDecoder map[uintptr]Decoder) (Decoder, error) {
-	//switch {
-	//case implementsUnmarshalJSONType(runtime.PtrTo(typ)):
-	//	return newUnmarshalJSONDecoder(runtime.PtrTo(typ), structName, fieldName), nil
-	//case runtime.PtrTo(typ).Implements(unmarshalTextType):
-	//	return newUnmarshalTextDecoder(runtime.PtrTo(typ), structName, fieldName), nil
-	//}
+	// switch {
+	// case implementsUnmarshalJSONType(runtime.PtrTo(typ)):
+	// 	return newUnmarshalJSONDecoder(runtime.PtrTo(typ), structName, fieldName), nil
+	// case runtime.PtrTo(typ).Implements(unmarshalTextType):
+	// 	return newUnmarshalTextDecoder(runtime.PtrTo(typ), structName, fieldName), nil
+	// }
 
 	if runtime.PtrTo(typ).Implements(remergeUnmarshalJSONType) {
 		return newRemergeUnmarshalJSONDecoder(runtime.PtrTo(typ), structName, fieldName), nil
+	}
+	if runtime.RType2Type(typ) == jsonRawMessageType {
+		return newUnmarshalJSONDecoder(runtime.PtrTo(typ), structName, fieldName), nil
 	}
 
 	switch typ.Kind() {
@@ -133,12 +163,12 @@ func compile(typ *runtime.Type, structName, fieldName string, structTypeToDecode
 }
 
 func isStringTagSupportedType(typ *runtime.Type) bool {
-	//switch {
-	//case implementsUnmarshalJSONType(runtime.PtrTo(typ)):
-	//	return false
-	//case runtime.PtrTo(typ).Implements(unmarshalTextType):
-	//	return false
-	//}
+	// switch {
+	// case implementsUnmarshalJSONType(runtime.PtrTo(typ)):
+	// 	return false
+	// case runtime.PtrTo(typ).Implements(unmarshalTextType):
+	// 	return false
+	// }
 	switch typ.Kind() {
 	case reflect.Map:
 		return false
@@ -486,6 +516,6 @@ func filterFieldSets(sets []*structFieldSet) []*structFieldSet {
 	return filtered
 }
 
-//func implementsUnmarshalJSONType(typ *runtime.Type) bool {
-//	return typ.Implements(unmarshalJSONType) || typ.Implements(unmarshalJSONContextType)
-//}
+func implementsUnmarshalJSONType(typ *runtime.Type) bool {
+	return typ.Implements(unmarshalJSONType) || typ.Implements(unmarshalJSONContextType)
+}
